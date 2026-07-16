@@ -21,15 +21,15 @@ impl AsteroidsGame {
 
         ctx.ui.label_centered("INSICULOUS ASTEROIDS", Vec2::new(cx, 150.0));
 
-        let items = ["Play", "Achievements"];
+        let items = ["1 Player", "2 Player Co-op", "Achievements"];
         for (i, item) in items.iter().enumerate() {
             let prefix = if i as u8 == selection { "> " } else { "  " };
-            ctx.ui.label_centered(&format!("{prefix}{item}"), Vec2::new(cx, 240.0 + i as f32 * 30.0));
+            ctx.ui.label_centered(&format!("{prefix}{item}"), Vec2::new(cx, 230.0 + i as f32 * 30.0));
         }
 
-        ctx.ui.label_centered("A/D rotate - W thrust - SPACE fire", Vec2::new(cx, 376.0));
-        ctx.ui.label_centered("W/S or Arrows to navigate", Vec2::new(cx, 400.0));
-        ctx.ui.label_centered("SPACE to confirm", Vec2::new(cx, 424.0));
+        ctx.ui.label_centered("P1 WASD + SPACE   -   P2 Arrows + ENTER", Vec2::new(cx, 372.0));
+        ctx.ui.label_centered("A/D rotate - W thrust - fire to shoot", Vec2::new(cx, 396.0));
+        ctx.ui.label_centered("Navigate to move, confirm to select", Vec2::new(cx, 420.0));
     }
 
     fn draw_mode_select(&self, ctx: &mut GameContext, selection: u8) {
@@ -110,12 +110,7 @@ impl AsteroidsGame {
         let cx = ctx.window_size.x / 2.0;
         let cy = ctx.window_size.y / 2.0;
 
-        ctx.ui.label(&format!("SCORE {}", self.score), Vec2::new(40.0, 16.0));
-        ctx.ui.label_centered(&format!("WAVE {}", self.wave), Vec2::new(cx, 16.0));
-        ctx.ui.label(
-            &format!("SHIPS {}", self.lives),
-            Vec2::new(ctx.window_size.x - 120.0, 16.0),
-        );
+        self.draw_hud(ctx, cx);
 
         let theme = ChaosTheme::for_mode(self.chaos_mode);
         if let Some(banner) = theme.banner_text {
@@ -127,12 +122,51 @@ impl AsteroidsGame {
 
         if self.state == GameState::GameOver {
             ctx.ui.label_centered("OUT OF SHIPS", Vec2::new(cx, cy - 60.0));
-            ctx.ui.label_centered(
-                &format!("Final score: {}  -  wave {}", self.score, self.wave),
-                Vec2::new(cx, cy - 34.0),
-            );
-            ctx.ui.label_centered("SPACE to play again", Vec2::new(cx, cy - 8.0));
+            ctx.ui.label_centered(&self.final_score_line(), Vec2::new(cx, cy - 34.0));
+            ctx.ui.label_centered("SPACE / ENTER to play again", Vec2::new(cx, cy - 8.0));
             ctx.ui.label_centered("ESC for title screen", Vec2::new(cx, cy + 18.0));
+        }
+    }
+
+    /// Wave is always centered. Single player shows one score/ships pair;
+    /// co-op puts player 1 on the left and player 2 on the right.
+    fn draw_hud(&self, ctx: &mut GameContext, cx: f32) {
+        ctx.ui.label_centered(&format!("WAVE {}", self.wave), Vec2::new(cx, 16.0));
+        match self.mode {
+            GameMode::SinglePlayer => {
+                let (score, lives) = self.ship_hud(0);
+                ctx.ui.label(&format!("SCORE {score}"), Vec2::new(40.0, 16.0));
+                ctx.ui.label(&format!("SHIPS {lives}"), Vec2::new(ctx.window_size.x - 120.0, 16.0));
+            }
+            GameMode::TwoPlayerCoop => {
+                let (s1, l1) = self.ship_hud(0);
+                let (s2, l2) = self.ship_hud(1);
+                ctx.ui.label(&format!("P1 {s1}  SHIPS {l1}"), Vec2::new(40.0, 16.0));
+                ctx.ui.label(
+                    &format!("P2 {s2}  SHIPS {l2}"),
+                    Vec2::new(ctx.window_size.x - 220.0, 16.0),
+                );
+            }
+        }
+    }
+
+    /// A ship's `(score, lives)` for the HUD, or zeros if that slot is empty.
+    fn ship_hud(&self, index: usize) -> (u32, u32) {
+        self.ships.get(index).map(|s| (s.score, s.lives)).unwrap_or((0, 0))
+    }
+
+    /// Game-over score summary: the lone score in solo, both players in co-op.
+    fn final_score_line(&self) -> String {
+        match self.mode {
+            GameMode::SinglePlayer => {
+                let (score, _) = self.ship_hud(0);
+                format!("Final score: {}  -  wave {}", score, self.wave)
+            }
+            GameMode::TwoPlayerCoop => {
+                let (s1, _) = self.ship_hud(0);
+                let (s2, _) = self.ship_hud(1);
+                format!("P1 {s1}   P2 {s2}   -   wave {}", self.wave)
+            }
         }
     }
 }

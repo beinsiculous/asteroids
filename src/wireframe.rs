@@ -109,22 +109,36 @@ impl AsteroidsGame {
             }
         }
 
-        if self.state != GameState::Playing || !blink_visible(self.invincibility) {
+        // Ships only draw while Playing; each blinks on its own i-frames and
+        // wears its player color (P1 the chaos accent, P2 the co-op green).
+        if self.state != GameState::Playing {
             return;
         }
-        let Some(ship) = self.ship else { return };
-        let Some((pos, rot)) = ctx.world.get::<Transform2D>(ship).map(|t| (t.position, t.rotation))
-        else {
-            return;
-        };
-        push_segments(ctx.lines, &ship_segments(pos, rot), theme.accent_color, SHIP_EMISSIVE);
-        if self.thrusting {
-            push_segments(
-                ctx.lines,
-                &thrust_flame_segments(pos, rot, hash_f32(self.frame_count)),
-                FLAME_COLOR,
-                FLAME_EMISSIVE,
-            );
+        for (index, ship) in self.ships.iter().enumerate() {
+            if !blink_visible(ship.invincibility) {
+                continue;
+            }
+            let Some(entity) = ship.entity else { continue };
+            let Some((pos, rot)) =
+                ctx.world.get::<Transform2D>(entity).map(|t| (t.position, t.rotation))
+            else {
+                continue;
+            };
+            let (hull_color, flame_color) = if index == 0 {
+                (theme.accent_color, FLAME_COLOR)
+            } else {
+                (SHIP2_COLOR, SHIP2_COLOR)
+            };
+            push_segments(ctx.lines, &ship_segments(pos, rot), hull_color, SHIP_EMISSIVE);
+            if ship.thrusting {
+                let flicker = hash_f32(self.frame_count.wrapping_add(index as u32));
+                push_segments(
+                    ctx.lines,
+                    &thrust_flame_segments(pos, rot, flicker),
+                    flame_color,
+                    FLAME_EMISSIVE,
+                );
+            }
         }
     }
 }

@@ -4,23 +4,27 @@
 use engine_core::prelude::*;
 
 use crate::constants::*;
+use crate::spawning::ship_spawn_pose;
 use crate::types::*;
 
 impl AsteroidsGame {
-    /// Keys that change the game state while the simulation screens are up.
+    /// State changes while the simulation screens are up, driven through the
+    /// per-player facade: either player's Menu action (Escape / pad Start)
+    /// bails to the title, and Action1 (Space / Enter / pad A) restarts from
+    /// game over.
     pub(crate) fn handle_state_input(&mut self, ctx: &mut GameContext) {
+        let primary = ctx.players.just_activated_any(GameAction::Action1, ctx.input);
+        let menu = ctx.players.just_activated_any(GameAction::Menu, ctx.input);
         match &self.state {
             GameState::Playing => {
-                if ctx.input.is_key_just_pressed(KeyCode::Escape) {
+                if menu {
                     self.reset_to_title(ctx.world);
                 }
             }
             GameState::GameOver => {
-                if ctx.input.is_key_just_pressed(KeyCode::Space)
-                    || ctx.input.is_key_just_pressed(KeyCode::Enter)
-                {
+                if primary {
                     self.start_game(ctx);
-                } else if ctx.input.is_key_just_pressed(KeyCode::Escape) {
+                } else if menu {
                     self.reset_to_title(ctx.world);
                 }
             }
@@ -28,47 +32,73 @@ impl AsteroidsGame {
         }
     }
 
-    /// Reset every counter, clear the field, park the ship at the center,
-    /// and spawn wave 1. Called from mode select and game-over restart.
+    /// Reset every counter, clear the field, spawn the ships for the current
+    /// mode, and start wave 1. Called from mode select and game-over restart.
     pub(crate) fn start_game(&mut self, ctx: &mut GameContext) {
-        self.score = 0;
-        self.lives = STARTING_LIVES;
         self.wave = 1;
-        self.next_extra_life_at = EXTRA_LIFE_EVERY;
-        self.fire_cooldown = 0.0;
-        self.invincibility = 0.0;
         self.wave_clear_timer = 0.0;
-        self.thrusting = false;
-        self.shot_streak = 0;
         self.waves_without_death = 0;
         self.last_kill_time = f32::NEG_INFINITY;
         self.play_time = 0.0;
 
         self.destroy_all_bullets(ctx.world);
         self.destroy_all_asteroids(ctx.world);
-        self.reset_ship_pose(ctx.world);
+        self.spawn_ships(ctx.world);
         self.apply_theme(ctx.world);
-        self.spawn_wave(ctx.world, Vec2::ZERO);
+        self.spawn_wave(ctx.world);
         self.state = GameState::Playing;
+    }
+
+    /// Build a fresh set of ships for the current mode, despawning any that
+    /// linger from a previous match. Each gets its own spawn pose and a full
+    /// count of lives.
+    pub(crate) fn spawn_ships(&mut self, world: &mut World) {
+        let stale: Vec<EntityId> =
+            self.ships.iter_mut().filter_map(|s| s.entity.take()).collect();
+        for entity in stale {
+            self.physics.destroy_entity(world, entity);
+        }
+        let count = self.mode.player_count();
+        self.ships = (0..count)
+            .map(|index| {
+                let (pos, facing) = ship_spawn_pose(count, index);
+                ShipState::new(crate::spawning::spawn_ship(world, pos, facing))
+            })
+            .collect();
+    }
+
+    /// Total lives remaining across every ship — drives the shared
+    /// "last ship" achievement and reads as one ship's lives in solo.
+    pub(crate) fn total_lives(&self) -> u32 {
+        self.ships.iter().map(|s| s.lives).sum()
     }
 
     /// Out of ships. The rocks keep drifting behind the game-over overlay;
     /// the next start clears them.
     pub(crate) fn finish_game(&mut self, ctx: &mut GameContext) {
         self.destroy_all_bullets(ctx.world);
-        self.thrusting = false;
+        for ship in &mut self.ships {
+            ship.thrusting = false;
+        }
         self.state = GameState::GameOver;
     }
 
     pub(crate) fn reset_to_title(&mut self, world: &mut World) {
         self.destroy_all_bullets(world);
         self.destroy_all_asteroids(world);
-        self.thrusting = false;
+        let ships: Vec<EntityId> =
+            self.ships.iter_mut().filter_map(|s| s.entity.take()).collect();
+        for entity in ships {
+            self.physics.destroy_entity(world, entity);
+        }
+        self.ships.clear();
         self.state = GameState::TitleScreen { selection: 0 };
     }
 
     pub(crate) fn destroy_all_bullets(&mut self, world: &mut World) {
-        for bullet in self.bullets.drain(..).collect::<Vec<_>>() {
+        let bullets: Vec<EntityId> =
+            self.ships.iter_mut().flat_map(|s| s.bullets.drain(..)).collect();
+        for bullet in bullets {
             self.physics.destroy_entity(world, bullet);
         }
     }
@@ -79,19 +109,26 @@ impl AsteroidsGame {
         }
     }
 
-    /// Add points, unlock score tiers, and grant a bonus ship at every
-    /// `EXTRA_LIFE_EVERY` crossing (each threshold pays out exactly once).
-    pub(crate) fn award_points(&mut self, achievements: &mut AchievementManager, points: u32) {
-        self.score += points;
-        if self.score >= SCORE_TIER_1 {
+    /// Add points to ship `ship_index`, unlock score tiers, and grant that
+    /// ship a bonus life at every `EXTRA_LIFE_EVERY` crossing (each threshold
+    /// pays out exactly once, per ship).
+    pub(crate) fn award_points(
+        &mut self,
+        achievements: &mut AchievementManager,
+        ship_index: usize,
+        points: u32,
+    ) {
+        let ship = &mut self.ships[ship_index];
+        ship.score += points;
+        if ship.score >= SCORE_TIER_1 {
             achievements.unlock(crate::achievements::SCORE_10K);
         }
-        if self.score >= SCORE_TIER_2 {
+        if ship.score >= SCORE_TIER_2 {
             achievements.unlock(crate::achievements::SCORE_30K);
         }
-        while self.score >= self.next_extra_life_at {
-            self.lives += 1;
-            self.next_extra_life_at += EXTRA_LIFE_EVERY;
+        while ship.score >= ship.next_extra_life_at {
+            ship.lives += 1;
+            ship.next_extra_life_at += EXTRA_LIFE_EVERY;
         }
     }
 

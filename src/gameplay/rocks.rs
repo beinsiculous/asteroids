@@ -91,17 +91,40 @@ fn border_point(t: f32) -> Vec2 {
     }
 }
 
-/// Hash-picked border spawn point, never within `SAFE_SPAWN_DIST` of the
-/// ship. Opposite perimeter points on this window are always >= 600 px
-/// apart, so the half-perimeter fallback resolves deterministically.
-pub(crate) fn spawn_position(seed: u32, ship_pos: Vec2) -> Vec2 {
-    let t = hash_f32(seed);
-    let first = border_point(t);
-    if first.distance(ship_pos) >= SAFE_SPAWN_DIST {
-        first
-    } else {
-        border_point(t + 0.5)
+/// Smallest distance from `p` to any point in `avoid` (infinite when empty).
+fn min_clearance(p: Vec2, avoid: &[Vec2]) -> f32 {
+    avoid.iter().map(|&a| p.distance(a)).fold(f32::INFINITY, f32::min)
+}
+
+/// How many evenly spaced perimeter points to try before settling for the
+/// roomiest. Opposite points on this window are >= 600 px apart, so with the
+/// ships bunched near the center at least one candidate always clears.
+const SPAWN_CANDIDATES: usize = 8;
+
+/// Hash-picked border spawn point that clears `SAFE_SPAWN_DIST` from every
+/// live ship. Walks up to `SPAWN_CANDIDATES` evenly spaced perimeter points
+/// from the hashed start and returns the first that clears all ships; if none
+/// does (adversarial ship placement), it returns the roomiest. Deterministic
+/// per seed, and correct for both single-player and co-op avoid sets.
+pub(crate) fn spawn_position(seed: u32, avoid: &[Vec2]) -> Vec2 {
+    let start = hash_f32(seed);
+    let mut best = border_point(start);
+    let mut best_clearance = min_clearance(best, avoid);
+    if best_clearance >= SAFE_SPAWN_DIST {
+        return best;
     }
+    for k in 1..SPAWN_CANDIDATES {
+        let candidate = border_point(start + k as f32 / SPAWN_CANDIDATES as f32);
+        let clearance = min_clearance(candidate, avoid);
+        if clearance >= SAFE_SPAWN_DIST {
+            return candidate;
+        }
+        if clearance > best_clearance {
+            best = candidate;
+            best_clearance = clearance;
+        }
+    }
+    best
 }
 
 /// Hash-picked drift speed within the size class's range; the Insane
@@ -112,43 +135,67 @@ pub(crate) fn asteroid_speed(size: AsteroidSize, seed: u32, mode: ChaosMode) -> 
     speed * if mode.is_insane() { INSANE_SPEED_MULT } else { 1.0 }
 }
 
-impl AsteroidsGame {
-    /// Match this frame's started contacts against live bullets and rocks.
-    /// Pairs are collected first so each bullet and each rock resolves at
-    /// most once per frame (a bullet grazing two rocks kills only one).
-    pub(crate) fn resolve_bullet_hits(&mut self, ctx: &mut GameContext, collisions: &[CollisionData]) {
-        let mut used_bullets: HashSet<EntityId> = HashSet::new();
-        let mut used_rocks: HashSet<EntityId> = HashSet::new();
-        let mut hits: Vec<(EntityId, EntityId)> = Vec::new();
+/// Pure hit pairing: for each started contact, match the first unused live
+/// bullet against the first unused rock the contact involves. Ships are never
+/// in the candidate set — the only hittable entities are `rocks`, which is
+/// what structurally guarantees no friendly fire (a bullet touching a ship
+/// can never resolve as a hit). Each bullet and rock is used at most once per
+/// frame. Returns `(owner_ship_index, bullet, rock)` triples.
+pub(crate) fn resolve_hit_pairs(
+    bullets: &[(usize, EntityId)],
+    rocks: &[EntityId],
+    collisions: &[CollisionData],
+) -> Vec<(usize, EntityId, EntityId)> {
+    let mut used_bullets: HashSet<EntityId> = HashSet::new();
+    let mut used_rocks: HashSet<EntityId> = HashSet::new();
+    let mut hits: Vec<(usize, EntityId, EntityId)> = Vec::new();
 
-        for c in collisions.iter().filter(|c| c.event.started) {
-            for &bullet in &self.bullets {
-                if used_bullets.contains(&bullet) {
-                    continue;
-                }
-                let Some(rock) = self.asteroids.iter().find(|r| {
-                    !used_rocks.contains(&r.entity) && c.event.involves(bullet, r.entity)
-                }) else {
-                    continue;
-                };
-                used_bullets.insert(bullet);
-                used_rocks.insert(rock.entity);
-                hits.push((bullet, rock.entity));
-                break;
+    for c in collisions.iter().filter(|c| c.event.started) {
+        for &(ship_index, bullet) in bullets {
+            if used_bullets.contains(&bullet) {
+                continue;
             }
+            let Some(&rock) = rocks
+                .iter()
+                .find(|&&r| !used_rocks.contains(&r) && c.event.involves(bullet, r))
+            else {
+                continue;
+            };
+            used_bullets.insert(bullet);
+            used_rocks.insert(rock);
+            hits.push((ship_index, bullet, rock));
+            break;
         }
+    }
+    hits
+}
 
-        for (bullet, rock) in hits {
-            self.bullets.retain(|&b| b != bullet);
+impl AsteroidsGame {
+    /// Match this frame's started contacts against live bullets and rocks,
+    /// attributing each kill to the ship that owns the bullet. Pairing runs
+    /// through the pure `resolve_hit_pairs` so a bullet grazing two rocks
+    /// kills only one, and bullets are only ever tested against rocks.
+    pub(crate) fn resolve_bullet_hits(&mut self, ctx: &mut GameContext, collisions: &[CollisionData]) {
+        let bullets: Vec<(usize, EntityId)> = self
+            .ships
+            .iter()
+            .enumerate()
+            .flat_map(|(si, s)| s.bullets.iter().map(move |&b| (si, b)))
+            .collect();
+        let rocks: Vec<EntityId> = self.asteroids.iter().map(|r| r.entity).collect();
+
+        for (ship_index, bullet, rock) in resolve_hit_pairs(&bullets, &rocks, collisions) {
+            self.ships[ship_index].bullets.retain(|&b| b != bullet);
             self.physics.destroy_entity(ctx.world, bullet);
-            self.shatter_asteroid(ctx, rock);
+            self.shatter_asteroid(ctx, ship_index, rock);
         }
     }
 
-    /// Destroy a rock: effects, scoring, skill achievements, and the split
-    /// into smaller children (offset outward so the solid bodies don't
-    /// spawn deeply interpenetrated).
-    pub(crate) fn shatter_asteroid(&mut self, ctx: &mut GameContext, entity: EntityId) {
+    /// Destroy a rock hit by ship `ship_index`: effects, scoring, skill
+    /// achievements, and the split into smaller children (offset outward so
+    /// the solid bodies don't spawn deeply interpenetrated). Score, streak,
+    /// and the close-call check all follow the owning ship.
+    pub(crate) fn shatter_asteroid(&mut self, ctx: &mut GameContext, ship_index: usize, entity: EntityId) {
         let Some(idx) = self.asteroids.iter().position(|r| r.entity == entity) else { return };
         let rock = self.asteroids.swap_remove(idx);
         let pos = entity_position(ctx.world, entity).unwrap_or(Vec2::ZERO);
@@ -160,12 +207,13 @@ impl AsteroidsGame {
         let (strength, radius) = GRID_IMPULSE_BREAK[rock.size.idx()];
         self.ripple_grid(pos, strength, radius);
 
-        self.award_points(ctx.achievements, rock.size.score());
-        self.shot_streak += 1;
-        if self.shot_streak >= SHARPSHOOTER_TARGET {
+        self.award_points(ctx.achievements, ship_index, rock.size.score());
+        self.ships[ship_index].shot_streak += 1;
+        if self.ships[ship_index].shot_streak >= SHARPSHOOTER_TARGET {
             ctx.achievements.unlock(achievements::SHARPSHOOTER);
         }
-        if let Some(ship_pos) = self.ship.and_then(|s| entity_position(ctx.world, s)) {
+        let ship_pos = self.ships[ship_index].entity.and_then(|s| entity_position(ctx.world, s));
+        if let Some(ship_pos) = ship_pos {
             if ship_pos.distance(pos) <= CLOSE_CALL_DIST {
                 ctx.achievements.unlock(achievements::CLOSE_CALL);
             }
@@ -192,11 +240,13 @@ impl AsteroidsGame {
     pub(crate) fn wrap_entities(&mut self, ctx: &mut GameContext) {
         let half = Vec2::new(WIN_W / 2.0, WIN_H / 2.0);
         let mut targets: Vec<(EntityId, f32)> = Vec::new();
-        if let Some(ship) = self.ship {
-            targets.push((ship, SHIP_SIZE));
+        for ship in &self.ships {
+            if let Some(entity) = ship.entity {
+                targets.push((entity, SHIP_SIZE));
+            }
+            targets.extend(ship.bullets.iter().map(|&b| (b, BULLET_RADIUS)));
         }
         targets.extend(self.asteroids.iter().map(|r| (r.entity, r.size.radius())));
-        targets.extend(self.bullets.iter().map(|&b| (b, BULLET_RADIUS)));
 
         for (entity, margin) in targets {
             if let Some(t) = ctx.world.get_mut::<Transform2D>(entity) {
@@ -228,12 +278,11 @@ impl AsteroidsGame {
             self.wave += 1;
             if self.wave >= WAVE_MILESTONE {
                 ctx.achievements.unlock(achievements::wave5_id(self.chaos_mode));
-                if self.lives == 1 {
+                if self.total_lives() == 1 {
                     ctx.achievements.unlock(achievements::LIVING_ON_EDGE);
                 }
             }
-            let ship_pos = self.ship.and_then(|s| entity_position(ctx.world, s)).unwrap_or(Vec2::ZERO);
-            self.spawn_wave(ctx.world, ship_pos);
+            self.spawn_wave(ctx.world);
         }
     }
 }

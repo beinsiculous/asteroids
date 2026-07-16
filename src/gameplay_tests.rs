@@ -8,9 +8,17 @@ use std::f32::consts::{FRAC_PI_2, PI};
 use crate::constants::*;
 use crate::gameplay::*;
 use crate::menu::mode_hint;
-use crate::spawning::spawn_ship;
+use crate::spawning::{ship_spawn_pose, spawn_ship};
 use crate::types::*;
 use crate::wireframe::*;
+
+/// A fabricated started contact between two entities, for pairing tests.
+fn started_contact(a: EntityId, b: EntityId) -> CollisionData {
+    CollisionData {
+        event: CollisionEvent { entity_a: a, entity_b: b, started: true, stopped: false },
+        contacts: Vec::new(),
+    }
+}
 
 const DT: f32 = 1.0 / 60.0;
 const HALF: Vec2 = Vec2::new(WIN_W / 2.0, WIN_H / 2.0);
@@ -229,7 +237,7 @@ fn spawn_position_respects_safe_distance_for_adversarial_ships() {
     ];
     for ship in ships {
         for seed in 0..200 {
-            let pos = spawn_position(seed, ship);
+            let pos = spawn_position(seed, &[ship]);
             assert!(
                 pos.distance(ship) >= SAFE_SPAWN_DIST,
                 "seed {seed}: spawn {pos:?} within safe distance of ship {ship:?}"
@@ -241,7 +249,30 @@ fn spawn_position_respects_safe_distance_for_adversarial_ships() {
         }
     }
     // Deterministic.
-    assert_eq!(spawn_position(9, Vec2::ZERO), spawn_position(9, Vec2::ZERO));
+    assert_eq!(spawn_position(9, &[Vec2::ZERO]), spawn_position(9, &[Vec2::ZERO]));
+}
+
+/// Co-op waves must keep clear of BOTH ships at once, not just one.
+#[test]
+fn wave_rocks_spawn_clear_of_both_ships() {
+    let mut game = AsteroidsGame::default();
+    let mut world = World::new();
+    game.mode = GameMode::TwoPlayerCoop;
+
+    let (p0, f0) = ship_spawn_pose(2, 0);
+    let (p1, f1) = ship_spawn_pose(2, 1);
+    game.ships.push(ShipState::new(spawn_ship(&mut world, p0, f0)));
+    game.ships.push(ShipState::new(spawn_ship(&mut world, p1, f1)));
+
+    game.wave = 4;
+    game.spawn_wave(&mut world);
+
+    assert_eq!(game.asteroids.len(), wave_asteroid_count(4, ChaosMode::Normal));
+    for rock in &game.asteroids {
+        let pos = world.get::<Transform2D>(rock.entity).expect("rock has a transform").position;
+        assert!(pos.distance(p0) >= SAFE_SPAWN_DIST, "rock {pos:?} too close to P1 at {p0:?}");
+        assert!(pos.distance(p1) >= SAFE_SPAWN_DIST, "rock {pos:?} too close to P2 at {p1:?}");
+    }
 }
 
 #[test]
@@ -254,19 +285,95 @@ fn size_tables_are_monotonic() {
 #[test]
 fn extra_life_grants_exactly_once_per_threshold() {
     let mut game = AsteroidsGame::default();
+    game.ships.push(ShipState::default());
     let mut mgr = AchievementManager::in_memory();
     crate::achievements::register_all(&mut mgr);
-    let lives = game.lives;
+    let lives = game.ships[0].lives;
 
-    game.award_points(&mut mgr, EXTRA_LIFE_EVERY - 20);
-    assert_eq!(game.lives, lives, "below the threshold: no bonus ship");
-    game.award_points(&mut mgr, 20);
-    assert_eq!(game.lives, lives + 1, "crossing the threshold grants one ship");
-    game.award_points(&mut mgr, 100);
-    assert_eq!(game.lives, lives + 1, "the same threshold never pays twice");
-    game.award_points(&mut mgr, EXTRA_LIFE_EVERY * 2);
-    assert_eq!(game.lives, lives + 3, "a big jump pays every threshold it crosses");
+    game.award_points(&mut mgr, 0, EXTRA_LIFE_EVERY - 20);
+    assert_eq!(game.ships[0].lives, lives, "below the threshold: no bonus ship");
+    game.award_points(&mut mgr, 0, 20);
+    assert_eq!(game.ships[0].lives, lives + 1, "crossing the threshold grants one ship");
+    game.award_points(&mut mgr, 0, 100);
+    assert_eq!(game.ships[0].lives, lives + 1, "the same threshold never pays twice");
+    game.award_points(&mut mgr, 0, EXTRA_LIFE_EVERY * 2);
+    assert_eq!(game.ships[0].lives, lives + 3, "a big jump pays every threshold it crosses");
     assert!(mgr.is_unlocked(crate::achievements::SCORE_10K));
+}
+
+/// Each ship banks its own points and crosses its own extra-life thresholds;
+/// one player earning a bonus ship never touches the other's lives.
+#[test]
+fn extra_life_thresholds_pay_per_player() {
+    let mut game = AsteroidsGame::default();
+    game.ships.push(ShipState::default());
+    game.ships.push(ShipState::default());
+    let mut mgr = AchievementManager::in_memory();
+    crate::achievements::register_all(&mut mgr);
+    let base = STARTING_LIVES;
+
+    // P1 crosses a threshold; P2 does not.
+    game.award_points(&mut mgr, 0, EXTRA_LIFE_EVERY);
+    assert_eq!(game.ships[0].lives, base + 1, "P1 earns a bonus ship");
+    assert_eq!(game.ships[1].lives, base, "P2's lives are untouched by P1's score");
+
+    // P2 earns its own, independently.
+    game.award_points(&mut mgr, 1, EXTRA_LIFE_EVERY);
+    assert_eq!(game.ships[1].lives, base + 1, "P2 earns its own bonus ship");
+    assert_eq!(game.ships[0].lives, base + 1, "P1 unchanged by P2's score");
+}
+
+/// The match ends only when every ship is out of lives; a single survivor
+/// keeps it going. In solo the slice has one element.
+#[test]
+fn coop_game_over_requires_both_ships_out() {
+    assert!(!coop_over(&[1, 0]), "P1 still has a life");
+    assert!(!coop_over(&[0, 2]), "P2 still has lives");
+    assert!(coop_over(&[0, 0]), "both out = game over");
+    assert!(coop_over(&[0]), "solo: out of lives = game over");
+    assert!(!coop_over(&[3]), "solo: lives remain");
+}
+
+/// Solo spawns the lone ship at the center; co-op spawns two disjoint poses.
+#[test]
+fn ship_spawn_poses_are_disjoint_in_coop_and_centered_solo() {
+    let (solo_pos, solo_facing) = ship_spawn_pose(1, 0);
+    assert_eq!(solo_pos, Vec2::ZERO, "single player starts at the center");
+    assert_eq!(solo_facing, FRAC_PI_2, "facing up");
+
+    let (a, fa) = ship_spawn_pose(2, 0);
+    let (b, fb) = ship_spawn_pose(2, 1);
+    assert_ne!(a, b, "co-op ships must not share a spawn point");
+    assert!(a.distance(b) > 1.0, "co-op ships spawn well apart");
+    assert_eq!(fa, FRAC_PI_2);
+    assert_eq!(fb, FRAC_PI_2);
+}
+
+/// Structural no-friendly-fire guard: `resolve_hit_pairs`' only hittable set
+/// is the rocks slice, so a started contact between a bullet and a ship never
+/// resolves as a hit — while a bullet-vs-rock contact does.
+#[test]
+fn bullets_never_test_against_ships() {
+    let mut world = World::new();
+    let other_ship = spawn_ship(&mut world, Vec2::new(80.0, 0.0), FRAC_PI_2);
+    let bullet = world.spawn().id();
+    let rock = world.spawn().id();
+
+    let bullets = [(0usize, bullet)];
+    let rocks = [rock];
+
+    let vs_ship = started_contact(bullet, other_ship);
+    assert!(
+        resolve_hit_pairs(&bullets, &rocks, &[vs_ship]).is_empty(),
+        "a bullet touching a ship must never resolve as a hit"
+    );
+
+    let vs_rock = started_contact(bullet, rock);
+    assert_eq!(
+        resolve_hit_pairs(&bullets, &rocks, &[vs_rock]),
+        vec![(0, bullet, rock)],
+        "a bullet touching a rock resolves and is attributed to its owner"
+    );
 }
 
 #[test]
@@ -299,10 +406,11 @@ fn bullet_registers_hit_on_dynamic_asteroid() {
     let mut game = AsteroidsGame::default();
     let mut world = World::new();
 
+    game.ships.push(ShipState::default());
     let rock = game.spawn_asteroid(
         &mut world, AsteroidSize::Large, Vec2::new(0.0, 150.0), Vec2::ZERO, 0.0);
-    game.spawn_bullet(&mut world, Vec2::ZERO, Vec2::new(0.0, BULLET_SPEED));
-    let bullet = game.bullets[0];
+    game.spawn_bullet(&mut world, 0, Vec2::ZERO, Vec2::new(0.0, BULLET_SPEED));
+    let bullet = game.ships[0].bullets[0];
 
     let mut hit = false;
     for _ in 0..120 {
@@ -347,8 +455,9 @@ fn stray_bullet_expires_via_lifetime_system() {
     let mut game = AsteroidsGame::default();
     let mut world = World::new();
 
-    game.spawn_bullet(&mut world, Vec2::ZERO, Vec2::new(0.0, BULLET_SPEED));
-    let bullet = game.bullets[0];
+    game.ships.push(ShipState::default());
+    game.spawn_bullet(&mut world, 0, Vec2::ZERO, Vec2::new(0.0, BULLET_SPEED));
+    let bullet = game.ships[0].bullets[0];
     assert!(world.get::<Lifetime>(bullet).is_some(), "bullets must carry a Lifetime");
 
     let frames = (BULLET_LIFETIME * 60.0) as usize + 10;
@@ -401,12 +510,12 @@ fn transform_write_teleports_live_body_preserving_velocity() {
 fn spawn_wave_respects_count_and_safe_distance() {
     let mut game = AsteroidsGame::default();
     let mut world = World::new();
-    let ship = spawn_ship(&mut world);
-    game.ship = Some(ship);
+    let ship = spawn_ship(&mut world, Vec2::ZERO, FRAC_PI_2);
+    game.ships.push(ShipState::new(ship));
 
     game.wave = 3;
     game.chaos_mode = ChaosMode::Ridiculous;
-    game.spawn_wave(&mut world, Vec2::ZERO);
+    game.spawn_wave(&mut world);
 
     assert_eq!(game.asteroids.len(), wave_asteroid_count(3, ChaosMode::Ridiculous));
     for rock in &game.asteroids {
@@ -426,8 +535,8 @@ fn spawn_wave_respects_count_and_safe_distance() {
 fn thrust_moves_the_real_ship_body() {
     let mut game = AsteroidsGame::default();
     let mut world = World::new();
-    let ship = spawn_ship(&mut world);
-    game.ship = Some(ship);
+    let ship = spawn_ship(&mut world, Vec2::ZERO, FRAC_PI_2);
+    game.ships.push(ShipState::new(ship));
 
     for _ in 0..60 {
         let (vel, _) = game.physics.get_body_velocity(ship).unwrap_or((Vec2::ZERO, 0.0));

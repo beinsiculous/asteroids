@@ -10,9 +10,9 @@ pub(crate) use rocks::{asteroid_speed, spawn_position, wave_asteroid_count};
 pub(crate) use ship::blink_visible;
 
 #[cfg(test)]
-pub(crate) use rocks::{circles_overlap, split_spec, split_velocity, wrap_position};
+pub(crate) use rocks::{circles_overlap, resolve_hit_pairs, split_spec, split_velocity, wrap_position};
 #[cfg(test)]
-pub(crate) use ship::{can_fire, integrate_ship, invincibility_secs};
+pub(crate) use ship::{can_fire, coop_over, integrate_ship, invincibility_secs};
 
 use engine_core::prelude::*;
 
@@ -20,6 +20,16 @@ use crate::types::*;
 
 pub(crate) fn entity_position(world: &World, entity: EntityId) -> Option<Vec2> {
     world.get::<Transform2D>(entity).map(|t| t.position)
+}
+
+/// World positions of every ship that still has a live body — the set new
+/// rocks keep clear of, and the set ship-vs-rock hit checks iterate.
+pub(crate) fn live_ship_positions(ships: &[ShipState], world: &World) -> Vec<Vec2> {
+    ships
+        .iter()
+        .filter_map(|s| s.entity)
+        .filter_map(|e| entity_position(world, e))
+        .collect()
 }
 
 impl AsteroidsGame {
@@ -44,7 +54,9 @@ impl AsteroidsGame {
         self.handle_state_input(ctx);
         if self.state == GameState::Playing {
             self.play_time += ctx.delta_time;
-            self.invincibility = (self.invincibility - ctx.delta_time).max(0.0);
+            for ship in &mut self.ships {
+                ship.invincibility = (ship.invincibility - ctx.delta_time).max(0.0);
+            }
             self.resolve_bullet_hits(ctx, &collisions);
             self.check_ship_hit(ctx);
             self.check_wave_clear(ctx);
@@ -62,13 +74,16 @@ impl AsteroidsGame {
     }
 
     /// Bullets the `LifetimeSystem` despawned this frame expired without
-    /// hitting anything — that's a miss, so the sharpshooter streak resets.
+    /// hitting anything — that's a miss, so the owning ship's sharpshooter
+    /// streak resets.
     fn prune_expired_bullets(&mut self, ctx: &mut GameContext) {
-        let before = self.bullets.len();
         let alive = ctx.world.entities();
-        self.bullets.retain(|b| alive.contains(b));
-        if self.bullets.len() < before {
-            self.shot_streak = 0;
+        for ship in &mut self.ships {
+            let before = ship.bullets.len();
+            ship.bullets.retain(|b| alive.contains(b));
+            if ship.bullets.len() < before {
+                ship.shot_streak = 0;
+            }
         }
     }
 
@@ -79,10 +94,12 @@ impl AsteroidsGame {
         }
     }
 
-    /// The only gameplay sprites are bullets (ship and rocks are wireframes)
+    /// The only gameplay sprites are bullets (ships and rocks are wireframes)
     /// — hide them on the menu screens for convention parity.
     pub(crate) fn update_entity_visibility(&self, ctx: &mut GameContext) {
         let visible = matches!(self.state, GameState::Playing | GameState::GameOver);
-        set_sprites_visible(ctx.world, self.bullets.clone(), visible);
+        let bullets: Vec<EntityId> =
+            self.ships.iter().flat_map(|s| s.bullets.iter().copied()).collect();
+        set_sprites_visible(ctx.world, bullets, visible);
     }
 }

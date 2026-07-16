@@ -8,18 +8,32 @@
 use engine_core::prelude::*;
 
 use crate::constants::*;
-use crate::gameplay::{asteroid_speed, spawn_position, wave_asteroid_count};
+use crate::gameplay::{asteroid_speed, live_ship_positions, spawn_position, wave_asteroid_count};
 use crate::types::*;
 use crate::wireframe;
 
-/// Spawn the player ship at the center, facing up. Dynamic with free
-/// rotation — gameplay drives it with one `set_velocity` per frame. The
-/// collider is a sensor: rocks must never physically deflect the ship
-/// (deaths are resolved by game code, which respects i-frames).
-pub(crate) fn spawn_ship(world: &mut World) -> EntityId {
+/// Where a ship starts, given the player count and its 0-based index.
+/// Single player sits at the center; co-op puts the two ships side by side
+/// on the x axis, both facing up, so neither starts on top of a rock.
+pub(crate) fn ship_spawn_pose(player_count: usize, index: usize) -> (Vec2, f32) {
+    let facing = std::f32::consts::FRAC_PI_2;
+    if player_count <= 1 {
+        (Vec2::ZERO, facing)
+    } else {
+        let x = if index == 0 { -COOP_SHIP_SPAWN_X } else { COOP_SHIP_SPAWN_X };
+        (Vec2::new(x, 0.0), facing)
+    }
+}
+
+/// Spawn a player ship at `pos` facing `rot`. Dynamic with free rotation —
+/// gameplay drives it with one `set_velocity` per frame. The collider is a
+/// sensor: rocks must never physically deflect the ship, and the two co-op
+/// ships pass cleanly through each other (deaths are resolved by game code,
+/// which respects i-frames).
+pub(crate) fn spawn_ship(world: &mut World, pos: Vec2, rot: f32) -> EntityId {
     world.spawn()
         .with(Name::new("Ship"))
-        .with(Transform2D::from_parts(Vec2::ZERO, std::f32::consts::FRAC_PI_2, Vec2::ONE))
+        .with(Transform2D::from_parts(pos, rot, Vec2::ONE))
         .with(RigidBody::new_dynamic()
             .with_gravity_scale(0.0)
             .with_linear_damping(0.0)
@@ -65,10 +79,10 @@ impl AsteroidsGame {
         entity
     }
 
-    /// Spawn one bullet: a dynamic sensor flying along the ship's heading
-    /// with a `Lifetime` safety net (the engine despawns strays, which also
-    /// caps bullet range).
-    pub(crate) fn spawn_bullet(&mut self, world: &mut World, pos: Vec2, velocity: Vec2) {
+    /// Spawn one bullet owned by ship `ship_index`: a dynamic sensor flying
+    /// along the ship's heading with a `Lifetime` safety net (the engine
+    /// despawns strays, which also caps bullet range).
+    pub(crate) fn spawn_bullet(&mut self, world: &mut World, ship_index: usize, pos: Vec2, velocity: Vec2) {
         let entity = world.spawn()
             .with(Name::new("Bullet"))
             .with(Transform2D::from_parts(pos, 0.0, Vec2::splat(BULLET_SIZE_PX / RENDER_UNIT)))
@@ -82,16 +96,17 @@ impl AsteroidsGame {
             .with(Lifetime::new(BULLET_LIFETIME))
             .id();
         self.physics.set_velocity(entity, velocity, 0.0);
-        self.bullets.push(entity);
+        self.ships[ship_index].bullets.push(entity);
     }
 
-    /// Spawn the current wave: large rocks on the window border, never
-    /// closer than `SAFE_SPAWN_DIST` to the ship, drifting in hash-seeded
+    /// Spawn the current wave: large rocks on the window border, never closer
+    /// than `SAFE_SPAWN_DIST` to ANY live ship, drifting in hash-seeded
     /// directions.
-    pub(crate) fn spawn_wave(&mut self, world: &mut World, ship_pos: Vec2) {
+    pub(crate) fn spawn_wave(&mut self, world: &mut World) {
+        let avoid = live_ship_positions(&self.ships, world);
         let count = wave_asteroid_count(self.wave, self.chaos_mode);
         for _ in 0..count {
-            let pos = spawn_position(self.next_seed(), ship_pos);
+            let pos = spawn_position(self.next_seed(), &avoid);
             let speed = asteroid_speed(AsteroidSize::Large, self.next_seed(), self.chaos_mode);
             let angle = hash_f32(self.next_seed()) * std::f32::consts::TAU;
             let vel = Vec2::new(angle.cos(), angle.sin()) * speed;
@@ -108,7 +123,7 @@ mod tests {
     #[test]
     fn ship_carries_a_sensor_circle_collider() {
         let mut world = World::new();
-        let ship = spawn_ship(&mut world);
+        let ship = spawn_ship(&mut world, Vec2::ZERO, std::f32::consts::FRAC_PI_2);
         let collider = world.get::<Collider>(ship).expect("ship needs a collider");
         assert!(collider.is_sensor, "rocks must never physically deflect the ship");
     }
@@ -127,9 +142,10 @@ mod tests {
     #[test]
     fn bullets_carry_lifetime_and_sensor() {
         let mut game = AsteroidsGame::default();
+        game.ships.push(ShipState::default());
         let mut world = World::new();
-        game.spawn_bullet(&mut world, Vec2::ZERO, Vec2::Y * BULLET_SPEED);
-        let bullet = game.bullets[0];
+        game.spawn_bullet(&mut world, 0, Vec2::ZERO, Vec2::Y * BULLET_SPEED);
+        let bullet = game.ships[0].bullets[0];
         assert!(world.get::<Lifetime>(bullet).is_some(), "bullets must carry a Lifetime");
         let collider = world.get::<Collider>(bullet).expect("bullet needs a collider");
         assert!(collider.is_sensor, "bullets must not push rocks around");

@@ -17,6 +17,10 @@ pub(crate) const SHIP_MAX_SPEED: f32 = 380.0; // px/s
 /// Fraction of velocity shed per second while coasting (classic drift decay).
 pub(crate) const SHIP_DRAG: f32 = 0.45;
 pub(crate) const SHIP_EMISSIVE: f32 = 1.8;
+/// Player 2's hull/flame color in co-op (player 1 uses the chaos accent).
+pub(crate) const SHIP2_COLOR: Vec4 = Vec4::new(0.35, 1.0, 0.55, 1.0);
+/// Half the gap between the two co-op ships at spawn (∓ this on the x axis).
+pub(crate) const COOP_SHIP_SPAWN_X: f32 = 80.0;
 pub(crate) const FLAME_COLOR: Vec4 = Vec4::new(1.0, 0.6, 0.15, 1.0);
 pub(crate) const FLAME_EMISSIVE: f32 = 2.2;
 pub(crate) const STARTING_LIVES: u32 = 3;

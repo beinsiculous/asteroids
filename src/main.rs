@@ -12,7 +12,6 @@ mod wireframe;
 
 use engine_core::prelude::*;
 use constants::*;
-use spawning::*;
 use types::*;
 
 impl Game for AsteroidsGame {
@@ -31,11 +30,9 @@ impl Game for AsteroidsGame {
         self.background = Some(spawn_background(
             ctx.world, tex.id, theme.bg_color, Vec2::new(WIN_W, WIN_H)));
 
-        // The ship lives for the whole session (it's a wireframe, so it's
-        // simply not drawn on the menu screens); rocks and bullets spawn
-        // fresh on every `start_game()`.
-        self.ship = Some(spawn_ship(ctx.world));
-
+        // Ships, rocks, and bullets all spawn fresh in `start_game()` — the
+        // ship count depends on the mode the player picks, and dead ships are
+        // despawned mid-match, so nothing ship-related is created up front.
         self.grid = Some(default_playfield_grid(&theme));
     }
 
@@ -63,7 +60,8 @@ fn main() {
         .with_clear_color(0.0, 0.0, 0.0, 1.0)
         .with_fps(60)
         .with_asset_base_path(root.join("assets").to_string_lossy())
-        .with_achievement_save_path(root.join("saves/asteroids_achievements.json").to_string_lossy());
+        .with_achievement_save_path(root.join("saves/asteroids_achievements.json").to_string_lossy())
+        .with_input_settings_path(root.join("saves/input_settings.json").to_string_lossy());
 
     // With `--features editor` the game runs inside the scene editor
     // (hierarchy, inspector, gizmos, play/pause/stop, collider overlay);
