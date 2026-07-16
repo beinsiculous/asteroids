@@ -7,6 +7,10 @@ use crate::menu::mode_hint;
 use crate::types::*;
 
 impl AsteroidsGame {
+    fn menu_style(&self) -> MenuStyle {
+        MenuStyle::from_theme(&ChaosTheme::for_mode(self.chaos_mode))
+    }
+
     pub(crate) fn draw_ui(&self, ctx: &mut GameContext) {
         match &self.state {
             GameState::TitleScreen { selection } => self.draw_title(ctx, *selection),
@@ -17,60 +21,55 @@ impl AsteroidsGame {
     }
 
     fn draw_title(&self, ctx: &mut GameContext, selection: u8) {
-        let cx = ctx.window_size.x / 2.0;
-
-        ctx.ui.label_centered("INSICULOUS ASTEROIDS", Vec2::new(cx, 150.0));
-
-        let items = ["1 Player", "2 Player Co-op", "Achievements"];
+        let style = self.menu_style();
+        let panel = MenuPanel::new("INSICULOUS ASTEROIDS", ctx.window_size / 2.0, 380.0, 4);
+        let mut y = panel.begin(ctx.ui, &style);
+        let items = ["1 Player", "2 Player Co-op", "Achievements", "Exit"];
         for (i, item) in items.iter().enumerate() {
-            let prefix = if i as u8 == selection { "> " } else { "  " };
-            ctx.ui.label_centered(&format!("{prefix}{item}"), Vec2::new(cx, 230.0 + i as f32 * 30.0));
+            y = panel.item(ctx.ui, y, item, i as u8 == selection, &style);
         }
+        panel.hint(ctx.ui, "Navigate to move, confirm to select", &style);
 
-        ctx.ui.label_centered("P1 WASD + SPACE   -   P2 Arrows + ENTER", Vec2::new(cx, 372.0));
-        ctx.ui.label_centered("A/D rotate - W thrust - fire to shoot", Vec2::new(cx, 396.0));
-        ctx.ui.label_centered("Navigate to move, confirm to select", Vec2::new(cx, 420.0));
+        // Control scheme, printed beneath the window.
+        let rect = panel.panel_rect();
+        let cx = ctx.window_size.x / 2.0;
+        ctx.ui.label_centered("P1 WASD + SPACE   -   P2 Arrows + ENTER", Vec2::new(cx, rect.y + rect.height + 24.0));
+        ctx.ui.label_centered("A/D rotate - W thrust - fire to shoot", Vec2::new(cx, rect.y + rect.height + 48.0));
     }
 
     fn draw_mode_select(&self, ctx: &mut GameContext, selection: u8) {
-        let cx = ctx.window_size.x / 2.0;
-
-        ctx.ui.label_centered("SELECT CHAOS MODE", Vec2::new(cx, 130.0));
-
+        let style = self.menu_style();
+        let panel = MenuPanel::new("SELECT CHAOS MODE", ctx.window_size / 2.0, 400.0, ChaosMode::ALL.len());
+        let mut y = panel.begin(ctx.ui, &style);
         for (i, &mode) in ChaosMode::ALL.iter().enumerate() {
-            let prefix = if i as u8 == selection { "> " } else { "  " };
             // Each entry glows in its chaos mode's banner color.
             let c = ChaosTheme::for_mode(mode).banner_color;
-            ctx.ui.label_centered_styled(
-                &format!("{prefix}{}", mode.label()),
-                Vec2::new(cx, 200.0 + i as f32 * 30.0),
-                Color::new(c.x, c.y, c.z, c.w),
-                16.0,
-            );
+            y = panel.item_colored(ctx.ui, y, mode.label(), c, i as u8 == selection, &style);
         }
-
-        ctx.ui.label_centered(
+        panel.hint(
+            ctx.ui,
             mode_hint(ChaosMode::ALL[selection as usize % ChaosMode::ALL.len()]),
-            Vec2::new(cx, 360.0),
+            &style,
         );
-        ctx.ui.label_centered("SPACE to confirm, ESC to go back", Vec2::new(cx, 400.0));
     }
 
     fn draw_achievements(&self, ctx: &mut GameContext) {
+        let style = self.menu_style();
         let cx = ctx.window_size.x / 2.0;
         let total = ctx.achievements.total();
         let unlocked = ctx.achievements.unlocked_count();
 
-        ctx.ui.label_centered("ACHIEVEMENTS", Vec2::new(cx, 30.0));
+        // Tall window; the section list draws left-aligned inside it.
+        let panel = MenuPanel::new("ACHIEVEMENTS", ctx.window_size / 2.0, ctx.window_size.x - 120.0, 15);
+        let first_y = panel.begin(ctx.ui, &style);
+        let rect = panel.panel_rect();
         ctx.ui.label_centered(
             &format!("{unlocked} / {total} unlocked"),
-            Vec2::new(cx, 54.0),
+            Vec2::new(cx, first_y - 8.0),
         );
 
-        // Left-align the list. Pixel-perfect centering of variable-length
-        // rows isn't worth the complexity — a fixed left margin reads fine.
-        let left = 40.0;
-        let mut y = 90.0;
+        let left = rect.x + 28.0;
+        let mut y = first_y + 18.0;
 
         let locked_color = Color::new(0.45, 0.45, 0.5, 1.0);
         let unlocked_color = Color::new(1.0, 0.85, 0.25, 1.0);
@@ -103,7 +102,7 @@ impl AsteroidsGame {
             y += 6.0;
         }
 
-        ctx.ui.label_centered("ESC or SPACE to go back", Vec2::new(cx, ctx.window_size.y - 20.0));
+        panel.hint(ctx.ui, "ESC or SPACE to go back", &style);
     }
 
     fn draw_gameplay(&self, ctx: &mut GameContext) {
@@ -120,11 +119,21 @@ impl AsteroidsGame {
             ctx.ui.label_centered_styled(banner, Vec2::new(cx, ctx.window_size.y - 24.0), color, 16.0);
         }
 
+        if self.state == GameState::Playing {
+            ctx.ui.label("ESC to pause", Vec2::new(40.0, ctx.window_size.y - 24.0));
+        }
+
         if self.state == GameState::GameOver {
-            ctx.ui.label_centered("OUT OF SHIPS", Vec2::new(cx, cy - 60.0));
-            ctx.ui.label_centered(&self.final_score_line(), Vec2::new(cx, cy - 34.0));
-            ctx.ui.label_centered("SPACE / ENTER to play again", Vec2::new(cx, cy - 8.0));
-            ctx.ui.label_centered("ESC for title screen", Vec2::new(cx, cy + 18.0));
+            let style = self.menu_style();
+            let panel = MenuPanel::new("OUT OF SHIPS", Vec2::new(cx, cy), 400.0, 2);
+            let mut y = panel.begin(ctx.ui, &style);
+            y = panel.line(ctx.ui, y, &self.final_score_line(), &style);
+            panel.line(ctx.ui, y, "SPACE / ENTER to play again", &style);
+            panel.hint(ctx.ui, "ESC for title screen", &style);
+        }
+
+        if self.pause.is_active() {
+            self.pause.draw(ctx.ui, ctx.window_size, &self.menu_style());
         }
     }
 

@@ -9,26 +9,18 @@ use crate::types::*;
 
 impl AsteroidsGame {
     /// State changes while the simulation screens are up, driven through the
-    /// per-player facade: either player's Menu action (Escape / pad Start)
-    /// bails to the title, and Action1 (Space / Enter / pad A) restarts from
-    /// game over.
+    /// per-player facade. During play, Menu (Escape / pad Start) is handled by
+    /// the pause gate, not here. From game over, Action1 (Space / Enter / pad
+    /// A) restarts and Menu bails to the title.
     pub(crate) fn handle_state_input(&mut self, ctx: &mut GameContext) {
         let primary = ctx.players.just_activated_any(GameAction::Action1, ctx.input);
         let menu = ctx.players.just_activated_any(GameAction::Menu, ctx.input);
-        match &self.state {
-            GameState::Playing => {
-                if menu {
-                    self.reset_to_title(ctx.world);
-                }
+        if let GameState::GameOver = &self.state {
+            if primary {
+                self.start_game(ctx);
+            } else if menu {
+                self.reset_to_title(ctx.world);
             }
-            GameState::GameOver => {
-                if primary {
-                    self.start_game(ctx);
-                } else if menu {
-                    self.reset_to_title(ctx.world);
-                }
-            }
-            _ => {}
         }
     }
 

@@ -153,6 +153,10 @@ pub(crate) struct AsteroidsGame {
     pub(crate) chaos_mode: ChaosMode,
     pub(crate) frame_count: u32,
 
+    /// Shared pause menu (Resume / Restart / Quit to Title). Only Playing is
+    /// pausable; see the pause gate in `update_gameplay`.
+    pub(crate) pause: PauseMenu,
+
     /// Deforming spring-mass grid drawn under the wireframes.
     pub(crate) grid: Option<GridMesh>,
     /// F1 toggles magenta collider outlines over the wireframes.
@@ -178,6 +182,7 @@ impl Default for AsteroidsGame {
             state: GameState::TitleScreen { selection: 0 },
             chaos_mode: ChaosMode::Normal,
             frame_count: 0,
+            pause: PauseMenu::new(),
             grid: None,
             debug_colliders: false,
         }

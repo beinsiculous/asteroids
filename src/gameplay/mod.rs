@@ -40,6 +40,34 @@ impl AsteroidsGame {
             self.debug_colliders = !self.debug_colliders;
         }
 
+        // Pause gate: only an active match is pausable. While paused the whole
+        // update is frozen — no physics step, no ship control, no timers; the
+        // overlay draws in the UI pass. The wireframes are re-emitted so the
+        // frozen scene stays visible beneath the overlay (the update that
+        // normally pushes them is skipped).
+        if self.state == GameState::Playing {
+            let action = self.pause.update(ctx.players, ctx.input);
+            ctx.time_scale = self.pause.time_scale();
+            match action {
+                PauseAction::Restart => { self.start_game(ctx); return; }
+                PauseAction::QuitToTitle => { self.reset_to_title(ctx.world); return; }
+                PauseAction::ExitGame => { ctx.exit_requested = true; return; }
+                // Skip the rest of the frame so the resuming keypress can't
+                // leak into gameplay; the world unfreezes next frame.
+                PauseAction::Resumed => return,
+                PauseAction::Idle => {}
+            }
+            if self.pause.is_active() {
+                // Keep the frozen scene visible under the pause overlay:
+                // wireframes re-emitted, grid re-emitted without advancing.
+                self.emit_wireframes(ctx);
+                engine_core::grid::step_and_emit_grid(
+                    self.grid.as_mut(), ctx.world, ctx.lines, 0.0, self.debug_colliders,
+                );
+                return;
+            }
+        }
+
         self.update_ship_control(ctx);
         self.physics.update(ctx.world, ctx.delta_time);
         // Expired bullets despawn here; the physics system garbage-collects
