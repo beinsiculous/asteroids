@@ -3,7 +3,7 @@
 
 use engine_core::prelude::*;
 use crate::achievements::DISPLAY_SECTIONS;
-use crate::menu::mode_hint;
+use crate::menu::{achievements_panel, mode_hint, mode_select_panel, title_panel};
 use crate::types::*;
 
 impl AsteroidsGame {
@@ -22,13 +22,13 @@ impl AsteroidsGame {
 
     fn draw_title(&self, ctx: &mut GameContext, selection: u8) {
         let style = self.menu_style();
-        let panel = MenuPanel::new("INSICULOUS ASTEROIDS", ctx.window_size / 2.0, 380.0, 4);
+        let panel = title_panel("INSICULOUS ASTEROIDS", ctx.window_size);
         let mut y = panel.begin(ctx.ui, &style);
         let items = ["1 Player", "2 Player Co-op", "Achievements", "Exit"];
         for (i, item) in items.iter().enumerate() {
             y = panel.item(ctx.ui, y, item, i as u8 == selection, &style);
         }
-        panel.hint(ctx.ui, "Navigate to move, confirm to select", &style);
+        panel.hint(ctx.ui, "Navigate to move - SPACE/ENTER, (A), or click to select", &style);
 
         // Control scheme, printed beneath the window.
         let rect = panel.panel_rect();
@@ -39,7 +39,7 @@ impl AsteroidsGame {
 
     fn draw_mode_select(&self, ctx: &mut GameContext, selection: u8) {
         let style = self.menu_style();
-        let panel = MenuPanel::new("SELECT CHAOS MODE", ctx.window_size / 2.0, 400.0, ChaosMode::ALL.len());
+        let panel = mode_select_panel("SELECT CHAOS MODE", ctx.window_size);
         let mut y = panel.begin(ctx.ui, &style);
         for (i, &mode) in ChaosMode::ALL.iter().enumerate() {
             // Each entry glows in its chaos mode's banner color.
@@ -60,7 +60,7 @@ impl AsteroidsGame {
         let unlocked = ctx.achievements.unlocked_count();
 
         // Tall window; the section list draws left-aligned inside it.
-        let panel = MenuPanel::new("ACHIEVEMENTS", ctx.window_size / 2.0, ctx.window_size.x - 120.0, 15);
+        let panel = achievements_panel("ACHIEVEMENTS", ctx.window_size);
         let first_y = panel.begin(ctx.ui, &style);
         let rect = panel.panel_rect();
         ctx.ui.label_centered(
@@ -102,7 +102,7 @@ impl AsteroidsGame {
             y += 6.0;
         }
 
-        panel.hint(ctx.ui, "ESC or SPACE to go back", &style);
+        panel.hint(ctx.ui, "ESC, SPACE, or click to go back", &style);
     }
 
     fn draw_gameplay(&self, ctx: &mut GameContext) {
@@ -128,7 +128,7 @@ impl AsteroidsGame {
             let panel = MenuPanel::new("OUT OF SHIPS", Vec2::new(cx, cy), 400.0, 2);
             let mut y = panel.begin(ctx.ui, &style);
             y = panel.line(ctx.ui, y, &self.final_score_line(), &style);
-            panel.line(ctx.ui, y, "SPACE / ENTER to play again", &style);
+            panel.line(ctx.ui, y, "SPACE or ENTER to play again", &style);
             panel.hint(ctx.ui, "ESC for title screen", &style);
         }
 

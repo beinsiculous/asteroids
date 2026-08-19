@@ -46,7 +46,7 @@ impl AsteroidsGame {
         // frozen scene stays visible beneath the overlay (the update that
         // normally pushes them is skipped).
         if self.state == GameState::Playing {
-            let action = self.pause.update(ctx.players, ctx.input);
+            let action = self.pause.update(ctx.players, ctx.input, ctx.window_size);
             ctx.time_scale = self.pause.time_scale();
             match action {
                 PauseAction::Restart => { self.start_game(ctx); return; }
