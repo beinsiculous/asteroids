@@ -117,7 +117,7 @@ pub(crate) struct Asteroid {
     pub(crate) shape: Vec<Vec2>,
 }
 
-pub(crate) struct AsteroidsGame {
+pub struct AsteroidsGame {
     /// Zero-gravity rapier world; the ship, rocks, and bullets all live here.
     pub(crate) physics: PhysicsSystem,
     /// Despawns expired bullets automatically.
