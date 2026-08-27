@@ -1,9 +1,11 @@
 //! Browser entry point: fetch all assets into the engine's VFS, then run
 //! the exact same game `main.rs` runs natively.
 //!
-//! No save paths are configured on the web, so the engine's existing
-//! fallbacks apply: in-memory achievements and default two-player input
-//! bindings (full browser persistence is the deferred H6 work).
+//! On wasm the engine's save-path strings are localStorage keys
+//! (`docs/WEB_SAVES.md` in the engine repo is the contract): achievements,
+//! high scores, and input bindings persist per-origin under the
+//! `beinsiculous.games.asteroids.*` keys, byte-identical to the native
+//! JSON save files, and the site reads them for its live boards.
 
 use engine_core::prelude::run_game;
 use engine_core::web::{init_web_logging, preload_assets, set_boot_status};
@@ -28,7 +30,11 @@ pub fn start() {
             set_boot_status(&format!("Failed to load assets: {e}"));
             return;
         }
-        if let Err(e) = run_game(crate::AsteroidsGame::default(), crate::game_config(ASSET_BASE)) {
+        let config = crate::game_config(ASSET_BASE)
+            .with_achievement_save_path("beinsiculous.games.asteroids.achievements")
+            .with_input_settings_path("beinsiculous.games.asteroids.input")
+            .with_score_save_path("beinsiculous.games.asteroids.scores");
+        if let Err(e) = run_game(crate::AsteroidsGame::default(), config) {
             log::error!("failed to start game: {e}");
             set_boot_status(&format!("Failed to start: {e}"));
         }

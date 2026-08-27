@@ -66,11 +66,18 @@ impl AsteroidsGame {
     }
 
     /// Out of ships. The rocks keep drifting behind the game-over overlay;
-    /// the next start clears them.
+    /// the next start clears them. This is the only transition into
+    /// GameOver, so final scores are submitted here exactly once per match:
+    /// the lone ship under "single", each co-op ship under "coop".
     pub(crate) fn finish_game(&mut self, ctx: &mut GameContext) {
         self.destroy_all_bullets(ctx.world);
+        let mode_key = match self.mode {
+            GameMode::SinglePlayer => "single",
+            GameMode::TwoPlayerCoop => "coop",
+        };
         for ship in &mut self.ships {
             ship.thrusting = false;
+            ctx.scores.submit(mode_key, u64::from(ship.score));
         }
         self.state = GameState::GameOver;
     }
