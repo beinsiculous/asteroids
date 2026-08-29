@@ -63,6 +63,27 @@ The game today is the neon geometry-wars look; Phase G of the Deion pivot re-ski
 - Style SSOT: `deion_assets/DEION_STYLE.md` via the root symlink (the symlink assumes the standard side-by-side checkout — the same requirement the Cargo path dep already imposes). Settled metrics: 16 px base cell, nearest filtering, 5× integer scale to `RENDER_UNIT = 80`, one art cell = one world unit; never fake a footprint via `Transform2D.scale` (physics ignores it).
 - Runtime assets arrive ONLY via the deion_assets sync copy into `assets/sprites/` (F2, not yet built) — never symlink or hand-copy art in. AI art is quarantined (`ai_` prefix, `deion_assets/ai/` only) — tiered ship rule (DEION_STYLE.md §6, Aug 19 2026): may ship in FREE web builds, never in paid/marketplace builds; `deion_assets/scripts/check_no_ai_assets.sh` must pass on any paid release's asset tree. Sheet clip names are the stable API between art and code.
 
+## Work tracking
+
+Open work lives on the **Studio Board** (https://github.com/orgs/beinsiculous/projects/1)
+as issues in this repo. **Always pass `-R beinsiculous/asteroids`** — a bare `gh` command
+resolves against the session's working directory, which is often the working-set root, so
+it lists and files against the wrong repository.
+
+```sh
+gh issue list -R beinsiculous/asteroids
+gh api repos/beinsiculous/asteroids/milestones --jq '.[] | "\(.title): \(.description)"'
+```
+
+Issues are grouped into **sprint milestones**; each description records the batch's
+internal order and its gates. Take the next unblocked issue in a sprint, not an arbitrary
+one. Claim by assigning yourself; close with `fixes beinsiculous/asteroids#N` in the commit.
+
+**Unfinished work becomes an issue.** Anything you don't finish — work you deferred, debt
+you created, a follow-up you spotted — is filed before you report done. Never buried in a
+doc, never left as a bare `TODO:`, never dropped. The `file-issue` skill carries the shape;
+`sprint-planning` groups issues into shippable batches.
+
 ## Review workflow
 
 - The adversarial-review skill lives in `.claude/skills/`.
