@@ -77,7 +77,7 @@ impl AsteroidsGame {
         };
         for ship in &mut self.ships {
             ship.thrusting = false;
-            ctx.scores.submit(mode_key, u64::from(ship.score));
+            let _ = ctx.scores.submit(mode_key, u64::from(ship.score));
         }
         self.state = GameState::GameOver;
     }
