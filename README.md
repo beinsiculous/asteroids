@@ -35,7 +35,7 @@ In single player the lone ship listens to *both* control clusters and both pads.
 
 ## The Deion Pivot: Meatieroids
 
-When Phase G of the Deion re-skin reaches this game, the belt gets a protein upgrade: **Meatieroids**. The asteroids become **roided-out flexing meatballs** — three sizes, all of them mid-workout, all of them furious. Shooting a big one doesn't so much shatter it as trigger a *flex-burst*: it pops into smaller, even angrier meatballs. The angry meatball is a recurring villain across the whole Deion universe — it also shows up as a hazard in Snake's "Hot Dog!" and as a patty-rank enemy in "Burger Invaders".
+When Phase G of the Deion re-skin reaches this game, the belt gets a protein upgrade: **Meatieroids**. The asteroids become **roided-out flexing meatballs** — three sizes, all of them mid-workout, all of them furious. Shooting a big one doesn't so much shatter it as trigger a *flex-burst*: it pops into smaller, even angrier meatballs. The angry meatball is a recurring villain across the whole Deion universe — it also shows up as a hazard in Snake's "Hot Dog!".
 
 The player ship is the **Flying Funk**, with Deion himself at the stick and the name painted on the hull (easter egg — squint at the sprite). Player 2 flies Cubert's ship. Bullets become **icicle spikes**, Deion's universal projectile. And if a UFO ever menaces the belt, it's Dr. Maxwell's cake saucer.
 
