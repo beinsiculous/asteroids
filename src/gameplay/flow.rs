@@ -103,7 +103,7 @@ impl AsteroidsGame {
     }
 
     pub(crate) fn destroy_all_asteroids(&mut self, world: &mut World) {
-        for rock in self.asteroids.drain(..).collect::<Vec<_>>() {
+        for rock in std::mem::take(&mut self.asteroids) {
             self.physics.destroy_entity(world, rock.entity);
         }
     }
