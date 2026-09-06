@@ -1,6 +1,7 @@
 //! Asteroids achievement definitions.
 //!
-//! Registered once in `init()`. Wave/untouchable achievements unlock from
+//! Registered through `Game::register_achievements` — the engine calls it before the window
+//! opens, which is what lets `--achievements-manifest` export the list with no GPU. Wave/untouchable achievements unlock from
 //! `check_wave_clear`, score tiers from `award_points`, and the skill set
 //! (sharpshooter, close call, double tap) from `shatter_asteroid`.
 
@@ -32,7 +33,7 @@ pub(crate) const DISPLAY_SECTIONS: &[(&str, &[&str])] = &[
         &[SHARPSHOOTER, CLOSE_CALL, UNTOUCHABLE, DOUBLE_TAP, LIVING_ON_EDGE]),
 ];
 
-/// Register every Asteroids achievement. Call once from `Game::init`.
+/// Register every Asteroids achievement. Call once from `Game::register_achievements`.
 pub(crate) fn register_all(mgr: &mut AchievementManager) {
     mgr.register(Achievement::new(WAVE5_NORMAL,
         "Rock Steady",
