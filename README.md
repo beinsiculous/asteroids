@@ -12,6 +12,8 @@ cargo run --features editor   # play inside the engine's scene editor
 cargo test                    # 42 headless tests
 ```
 
+The same build runs in the browser at [beinsiculous.com/playground/asteroids/](https://beinsiculous.com/playground/asteroids/): the game inside the editor, layout only — the rules are compiled in and nothing you change there persists.
+
 ## Controls
 
 | Action | P1 keyboard | P2 keyboard | Gamepad (per player) |
