@@ -70,9 +70,6 @@ impl AsteroidsGame {
 
         self.update_ship_control(ctx);
         self.physics.update(ctx.world, ctx.delta_time);
-        // Expired bullets despawn here; the physics system garbage-collects
-        // their rapier bodies on its next update.
-        self.lifetimes.update(ctx.world, ctx.delta_time);
         self.prune_expired_bullets(ctx);
 
         // Drain this frame's collision events once (take = the buffer is
@@ -101,9 +98,9 @@ impl AsteroidsGame {
         self.emit_wireframes(ctx);
     }
 
-    /// Bullets the `LifetimeSystem` despawned this frame expired without
-    /// hitting anything — that's a miss, so the owning ship's sharpshooter
-    /// streak resets.
+    /// Bullets the engine's lifetime pass (`ecs::LifetimeSystem`, stepped by
+    /// the frame tail) despawned this frame expired without hitting anything —
+    /// that's a miss, so the owning ship's sharpshooter streak resets.
     fn prune_expired_bullets(&mut self, ctx: &mut GameContext) {
         let alive = ctx.world.entities();
         for ship in &mut self.ships {

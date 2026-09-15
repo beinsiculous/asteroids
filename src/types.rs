@@ -120,8 +120,6 @@ pub(crate) struct Asteroid {
 pub struct AsteroidsGame {
     /// Zero-gravity rapier world; the ship, rocks, and bullets all live here.
     pub(crate) physics: PhysicsSystem,
-    /// Despawns expired bullets automatically.
-    pub(crate) lifetimes: LifetimeSystem,
 
     /// The flyable ships: one in single player, two in co-op. They share the
     /// rock field but keep individual lives, scores, and bullets.
@@ -167,7 +165,6 @@ impl Default for AsteroidsGame {
     fn default() -> Self {
         Self {
             physics: PhysicsSystem::with_config(PhysicsConfig::space()),
-            lifetimes: LifetimeSystem::new(),
             ships: Vec::new(),
             mode: GameMode::SinglePlayer,
             asteroids: Vec::new(),

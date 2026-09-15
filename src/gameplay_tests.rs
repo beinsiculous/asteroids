@@ -454,6 +454,7 @@ fn asteroids_bounce_off_each_other() {
 fn stray_bullet_expires_via_lifetime_system() {
     let mut game = AsteroidsGame::default();
     let mut world = World::new();
+    let mut lifetimes = LifetimeSystem::new();
 
     game.ships.push(ShipState::default());
     game.spawn_bullet(&mut world, 0, Vec2::ZERO, Vec2::new(0.0, BULLET_SPEED));
@@ -463,7 +464,7 @@ fn stray_bullet_expires_via_lifetime_system() {
     let frames = (BULLET_LIFETIME * 60.0) as usize + 10;
     for _ in 0..frames {
         game.physics.update(&mut world, DT);
-        game.lifetimes.update(&mut world, DT);
+        lifetimes.update(&mut world, DT);
     }
     assert!(
         !world.entities().contains(&bullet),
