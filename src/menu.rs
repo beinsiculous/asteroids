@@ -60,10 +60,10 @@ pub(crate) fn achievements_panel(title: &str, window_size: Vec2) -> MenuPanel {
 /// One-line description of what each chaos mode means in this game.
 pub(crate) fn mode_hint(mode: ChaosMode) -> &'static str {
     match mode {
-        ChaosMode::Normal => "The classic belt. Rocks split, you drift.",
-        ChaosMode::Insane => "Rocks fly 60% faster and mercy is brief.",
-        ChaosMode::Ridiculous => "Big rocks shatter into three - and bring a friend.",
-        ChaosMode::Insiculous => "Triple splits, extra rocks, everything faster.",
+        ChaosMode::Normal => "The classic belt. Meatballs split, you drift.",
+        ChaosMode::Insane => "Meatballs fly 60% faster and mercy is brief.",
+        ChaosMode::Ridiculous => "Big meatballs burst into three - and bring a friend.",
+        ChaosMode::Insiculous => "Triple bursts, extra meatballs, everything faster.",
     }
 }
 

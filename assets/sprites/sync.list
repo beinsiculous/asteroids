@@ -1,4 +1,4 @@
-# Asteroids's art, copied from deion_assets by scripts/sync_sprites.py — the only way
+# Meatieroids's art, copied from deion_assets by scripts/sync_sprites.py — the only way
 # art enters this game. Run it from this repo's root:
 #
 #     python3 deion_assets/scripts/sync_sprites.py .
@@ -6,12 +6,20 @@
 # and `--check` to prove the copies still match the pinned commit below (the
 # working set's scripts/check-sprite-sync.sh runs that over every game).
 #
-# Today it carries only the startup cards and the engine's window icon, which
-# every game shows; the game's own art arrives with its re-skin. The quarantined
-# `ai_` prefix stays on the copies: a paid build's check_no_ai_assets.sh gate must
-# still find them until Jesse's cleanup pass.
+# The startup cards and the engine's window icon, then the game's own: the three
+# meatieroids, the two Flying Funks seen from above, their shots, and the star tile.
+# The quarantined `ai_` prefix stays on the copies: a paid build's
+# check_no_ai_assets.sh gate must still find them until Jesse's cleanup pass.
 #
-# deion_assets bd4ff3f0b742b155e154a4f71f4837bd51164909
+# deion_assets e8216bd591d25ec842dee96047f864632fbcd3db
 ai/branding/be_insiculous/ai_be_insiculous_320x192.png
 ai/branding/insiculous_2d_maxwell/ai_insiculous_2d_maxwell_splash_320x192.png
 ai/branding/insiculous_2d_maxwell/ai_insiculous_2d_maxwell_icon_64x64.png
+ai/sidescroller/meatieroid_large/ai_meatieroid_large.png
+ai/sidescroller/meatieroid_medium/ai_meatieroid_medium.png
+ai/sidescroller/meatieroid_small/ai_meatieroid_small.png
+ai/topdown/ships/flying_funk/ai_flying_funk_64x64.png
+ai/topdown/ships/flying_funk_player_two/ai_flying_funk_player_two_64x64.png
+ai/sidescroller/props/icicle/ai_icicle_16x16.png
+ai/sidescroller/props/ice_chip/ai_ice_chip_16x16.png
+ai/topdown/tiles/meatieroids_space/ai_meatieroids_space_64x64.png

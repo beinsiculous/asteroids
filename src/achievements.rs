@@ -1,4 +1,6 @@
-//! Asteroids achievement definitions.
+//! Meatieroids achievement definitions. The ids are the save file's keys and stay
+//! as the game was first shipped; only the names and descriptions a player reads
+//! changed with the re-skin.
 //!
 //! Registered through `Game::register_achievements` — the engine calls it before the window
 //! opens, which is what lets `--achievements-manifest` export the list with no GPU. Wave/untouchable achievements unlock from
@@ -33,7 +35,7 @@ pub(crate) const DISPLAY_SECTIONS: &[(&str, &[&str])] = &[
         &[SHARPSHOOTER, CLOSE_CALL, UNTOUCHABLE, DOUBLE_TAP, LIVING_ON_EDGE]),
 ];
 
-/// Register every Asteroids achievement. Call once from `Game::register_achievements`.
+/// Register every Meatieroids achievement. Call once from `Game::register_achievements`.
 pub(crate) fn register_all(mgr: &mut AchievementManager) {
     mgr.register(Achievement::new(WAVE5_NORMAL,
         "Rock Steady",
@@ -52,7 +54,7 @@ pub(crate) fn register_all(mgr: &mut AchievementManager) {
         "Ten Grand",
         "Score 10,000 points."));
     mgr.register(Achievement::new(SCORE_30K,
-        "Asteroid Legend",
+        "Meatieroid Legend",
         "Score 30,000 points."));
 
     mgr.register(Achievement::new(SHARPSHOOTER,
@@ -60,13 +62,13 @@ pub(crate) fn register_all(mgr: &mut AchievementManager) {
         "Land 10 hits in a row without a shot expiring."));
     mgr.register(Achievement::new(CLOSE_CALL,
         "Close Call",
-        "Shatter a rock within 60 pixels of your ship."));
+        "Bust a meatieroid within 60 pixels of your ship."));
     mgr.register(Achievement::new(UNTOUCHABLE,
         "Untouchable",
         "Clear 3 waves in a row without dying."));
     mgr.register(Achievement::new(DOUBLE_TAP,
         "Double Tap",
-        "Shatter two rocks within half a second."));
+        "Bust two meatieroids within half a second."));
     mgr.register(Achievement::new(LIVING_ON_EDGE,
         "Living on the Edge",
         "Reach wave 5 on your last ship."));

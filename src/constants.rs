@@ -1,28 +1,23 @@
-//! Every tunable in one place. Sizes are world pixels; sprite scales divide
-//! by `RENDER_UNIT` at the spawn site. Colliders take absolute pixels.
+//! Every tunable in one place. Sizes are world pixels; colliders take absolute pixels.
+//! What is measured from the art — boxes, reaches, depths — lives in `art.rs`.
 
 use glam::Vec4;
+
+use crate::art::FUNK_SPOUT_REACH;
 
 pub(crate) const WIN_W: f32 = 800.0;
 pub(crate) const WIN_H: f32 = 600.0;
 
 // --- Ship ---
-/// Distance from ship center to the nose, world pixels.
-pub(crate) const SHIP_SIZE: f32 = 16.0;
-/// Forgiving hit circle, smaller than the drawn hull.
-pub(crate) const SHIP_COLLIDER_RADIUS: f32 = 10.0;
+/// Forgiving hit circle, inside the drawn oval hull (26 x 20) and spout.
+pub(crate) const SHIP_COLLIDER_RADIUS: f32 = 11.0;
 pub(crate) const SHIP_TURN_SPEED: f32 = 4.2; // rad/s
 pub(crate) const SHIP_THRUST: f32 = 340.0; // px/s^2
 pub(crate) const SHIP_MAX_SPEED: f32 = 380.0; // px/s
 /// Fraction of velocity shed per second while coasting (classic drift decay).
 pub(crate) const SHIP_DRAG: f32 = 0.45;
-pub(crate) const SHIP_EMISSIVE: f32 = 1.8;
-/// Player 2's hull/flame color in co-op (player 1 uses the chaos accent).
-pub(crate) const SHIP2_COLOR: Vec4 = Vec4::new(0.35, 1.0, 0.55, 1.0);
 /// Half the gap between the two co-op ships at spawn (∓ this on the x axis).
 pub(crate) const COOP_SHIP_SPAWN_X: f32 = 80.0;
-pub(crate) const FLAME_COLOR: Vec4 = Vec4::new(1.0, 0.6, 0.15, 1.0);
-pub(crate) const FLAME_EMISSIVE: f32 = 2.2;
 pub(crate) const STARTING_LIVES: u32 = 3;
 /// Seconds of post-respawn invincibility (halved in Insane-family modes).
 pub(crate) const RESPAWN_INVINCIBILITY: f32 = 3.0;
@@ -32,19 +27,18 @@ pub(crate) const EXTRA_LIFE_EVERY: u32 = 10_000;
 
 // --- Bullets ---
 pub(crate) const BULLET_SPEED: f32 = 520.0;
-pub(crate) const BULLET_RADIUS: f32 = 3.0;
-/// Sprite square edge, world pixels.
-pub(crate) const BULLET_SIZE_PX: f32 = 6.0;
+/// Half the drawn shots' width.
+pub(crate) const BULLET_RADIUS: f32 = 4.0;
 /// ~570 px of travel — under one full screen crossing even with wrap.
 pub(crate) const BULLET_LIFETIME: f32 = 1.1;
 pub(crate) const FIRE_COOLDOWN: f32 = 0.22;
 pub(crate) const MAX_LIVE_BULLETS: usize = 4;
-pub(crate) const MUZZLE_OFFSET: f32 = SHIP_SIZE + 4.0;
-pub(crate) const BULLET_EMISSIVE: f32 = 2.5;
-pub(crate) const BULLET_COLOR: Vec4 = Vec4::new(1.0, 0.95, 0.6, 1.0);
+/// A shot leaves just past the spout's tip, along the drawn heading.
+pub(crate) const MUZZLE_OFFSET: f32 = FUNK_SPOUT_REACH + 4.0;
 
-// --- Asteroids (index order: Large, Medium, Small) ---
-pub(crate) const ASTEROID_RADII: [f32; 3] = [40.0, 22.0, 12.0];
+// --- Meatieroids (index order: Large, Medium, Small) ---
+/// The drawn round bodies' radii, which are also the colliders'.
+pub(crate) const ASTEROID_RADII: [f32; 3] = [29.5, 18.5, 11.5];
 /// Small rocks are the hardest targets, so they pay the most.
 pub(crate) const ASTEROID_SCORES: [u32; 3] = [20, 50, 100];
 pub(crate) const ASTEROID_SPEED_RANGES: [(f32, f32); 3] =
@@ -52,10 +46,6 @@ pub(crate) const ASTEROID_SPEED_RANGES: [(f32, f32); 3] =
 pub(crate) const INSANE_SPEED_MULT: f32 = 1.6;
 /// Spin drawn from [-max, max] rad/s per rock.
 pub(crate) const ASTEROID_SPIN_MAX: f32 = 1.4;
-pub(crate) const ASTEROID_VERTS: usize = 10;
-/// Collider radius as a fraction of the nominal (mean polygon) radius.
-pub(crate) const ASTEROID_COLLIDER_SCALE: f32 = 0.9;
-pub(crate) const ASTEROID_EMISSIVE: f32 = 1.1;
 
 // --- Splitting ---
 pub(crate) const SPLIT_COUNT: usize = 2;
@@ -63,6 +53,10 @@ pub(crate) const RIDICULOUS_LARGE_SPLIT_COUNT: usize = 3;
 pub(crate) const SPLIT_SPEED_MULT: f32 = 1.25;
 /// Radians between adjacent child directions (before jitter).
 pub(crate) const SPLIT_SPREAD: f32 = 0.9;
+/// A child spawns at least this many parent radii out from the parent's centre.
+pub(crate) const SPLIT_OFFSET_PARENT_RADII: f32 = 1.2;
+/// Pixels of air between adjacent siblings at birth.
+pub(crate) const SPLIT_SIBLING_GAP: f32 = 2.0;
 
 // --- Waves ---
 pub(crate) const WAVE_BASE_ASTEROIDS: usize = 4;
@@ -85,6 +79,10 @@ pub(crate) const SCORE_TIER_2: u32 = 30_000;
 pub(crate) const GRID_IMPULSE_BREAK: [(f32, f32); 3] =
     [(320.0, 130.0), (220.0, 95.0), (150.0, 60.0)];
 pub(crate) const GRID_IMPULSE_SHIP_DEATH: (f32, f32) = (700.0, 160.0);
+
+// --- the collider overlay (F1) ---
+pub(crate) const DEBUG_COLLIDER_COLOR: Vec4 = Vec4::new(1.0, 0.2, 1.0, 0.9);
+pub(crate) const DEBUG_COLLIDER_EMISSIVE: f32 = 2.0;
 
 // --- the startup cards and the window icon ---------------------------------------
 // Synced from deion_assets like every sheet (`assets/sprites/sync.list`).

@@ -1190,6 +1190,7 @@ dependencies = [
  "editor_integration",
  "engine_core",
  "glam",
+ "image",
  "log",
  "wasm-bindgen",
  "wasm-bindgen-futures",

@@ -1,6 +1,6 @@
 //! Per-frame gameplay orchestration. The pieces live in submodules: ship
-//! control and death (`ship`), rock splitting/waves/wrapping (`rocks`),
-//! and match lifecycle (`flow`).
+//! control, its drawn pose and death (`ship`), meatieroid splitting/waves/wrapping
+//! (`rocks`), and match lifecycle (`flow`).
 
 mod flow;
 mod rocks;
@@ -10,12 +10,18 @@ pub(crate) use rocks::{asteroid_speed, spawn_position, wave_asteroid_count};
 pub(crate) use ship::blink_visible;
 
 #[cfg(test)]
-pub(crate) use rocks::{circles_overlap, resolve_hit_pairs, split_spec, split_velocity, wrap_position};
+pub(crate) use rocks::{
+    circles_overlap, resolve_hit_pairs, split_offset, split_spec, split_velocity, wrap_position,
+};
 #[cfg(test)]
-pub(crate) use ship::{can_fire, coop_over, integrate_ship, invincibility_secs};
+pub(crate) use ship::{
+    advance_heading, can_fire, coop_over, displayed_heading, heading_direction, integrate_ship,
+    invincibility_secs, ship_pose,
+};
 
 use engine_core::prelude::*;
 
+use crate::constants::*;
 use crate::types::*;
 
 pub(crate) fn entity_position(world: &World, entity: EntityId) -> Option<Vec2> {
@@ -35,16 +41,15 @@ pub(crate) fn live_ship_positions(ships: &[ShipState], world: &World) -> Vec<Vec
 impl AsteroidsGame {
     pub(crate) fn update_gameplay(&mut self, ctx: &mut GameContext) {
         // F1 toggles the collider debug overlay. Magenta outlines render on
-        // top so any wireframe-vs-collider mismatch is obvious.
+        // top so any sprite-vs-collider mismatch is obvious.
         if ctx.input.is_key_just_pressed(KeyCode::F1) {
             self.debug_colliders = !self.debug_colliders;
         }
 
         // Pause gate: only an active match is pausable. While paused the whole
         // update is frozen — no physics step, no ship control, no timers; the
-        // overlay draws in the UI pass. The wireframes are re-emitted so the
-        // frozen scene stays visible beneath the overlay (the update that
-        // normally pushes them is skipped).
+        // overlay draws in the UI pass, and the engine holds the sprites and the
+        // grid still.
         if self.state == GameState::Playing {
             let action = self.pause.update(ctx.players, ctx.input, ctx.window_size);
             ctx.time_scale = self.pause.time_scale();
@@ -58,12 +63,7 @@ impl AsteroidsGame {
                 PauseAction::Idle => {}
             }
             if self.pause.is_active() {
-                // Keep the frozen scene visible under the pause overlay:
-                // wireframes re-emitted, grid re-emitted without advancing.
-                self.emit_wireframes(ctx);
-                engine_core::grid::step_and_emit_grid(
-                    self.grid.as_mut(), ctx.world, ctx.lines, 0.0, self.debug_colliders,
-                );
+                self.emit_collider_overlay(ctx);
                 return;
             }
         }
@@ -71,6 +71,7 @@ impl AsteroidsGame {
         self.update_ship_control(ctx);
         self.physics.update(ctx.world, ctx.delta_time);
         self.prune_expired_bullets(ctx);
+        self.prune_ended_one_shots(ctx.world);
 
         // Drain this frame's collision events once (take = the buffer is
         // consumed, not borrowed). Every consumer below shares this Vec.
@@ -86,16 +87,19 @@ impl AsteroidsGame {
             self.check_ship_hit(ctx);
             self.check_wave_clear(ctx);
         }
-        // Wrap in GameOver too, so the leftover rocks keep circling the
+        // Wrap in GameOver too, so the leftover meatieroids keep circling the
         // field behind the overlay instead of drifting off forever.
         self.wrap_entities(ctx);
+        self.pose_ships(ctx.world);
+        self.emit_collider_overlay(ctx);
+    }
 
-        // Step + render the deforming grid after gameplay so it reacts to
-        // this frame's events; the wireframes go on top of the grid.
-        step_and_emit_grid(
-            self.grid.as_mut(), ctx.world, ctx.lines, ctx.delta_time, self.debug_colliders,
-        );
-        self.emit_wireframes(ctx);
+    /// Outline every collider in bright magenta while F1 is on — the only line-buffer
+    /// work the game owns, drawn over the art.
+    fn emit_collider_overlay(&self, ctx: &mut GameContext) {
+        if self.debug_colliders {
+            debug::draw_colliders(ctx.world, ctx.lines, DEBUG_COLLIDER_COLOR, DEBUG_COLLIDER_EMISSIVE);
+        }
     }
 
     /// Bullets the engine's lifetime pass (`ecs::LifetimeSystem`, stepped by
@@ -112,19 +116,32 @@ impl AsteroidsGame {
         }
     }
 
-    /// Push a radial shockwave into the deforming grid.
-    pub(crate) fn ripple_grid(&mut self, position: Vec2, strength: f32, radius: f32) {
-        if let Some(grid) = self.grid.as_mut() {
-            grid.apply_impulse(&GridImpulse::Radial { position, strength, radius, attractive: false });
-        }
+    /// Forget every `die` and `crash` whose clip ran out: the engine despawned it, and the
+    /// list would otherwise grow with every kill of an endless match.
+    fn prune_ended_one_shots(&mut self, world: &World) {
+        let alive = world.entities();
+        self.transient_visuals.retain(|one_shot| alive.contains(one_shot));
     }
 
-    /// The only gameplay sprites are bullets (ships and rocks are wireframes)
-    /// — hide them on the menu screens for convention parity.
+    /// The match's sprites show only in a match (playing or game over); the stars and
+    /// the grid stay up under the menus. A ship blinks through its i-frames.
     pub(crate) fn update_entity_visibility(&self, ctx: &mut GameContext) {
-        let visible = matches!(self.state, GameState::Playing | GameState::GameOver);
-        let bullets: Vec<EntityId> =
-            self.ships.iter().flat_map(|s| s.bullets.iter().copied()).collect();
-        set_sprites_visible(ctx.world, bullets, visible);
+        let in_match = matches!(self.state, GameState::Playing | GameState::GameOver);
+        let entities: Vec<EntityId> = self.asteroids.iter().map(|rock| rock.entity)
+            .chain(self.ships.iter().flat_map(|ship| ship.bullets.iter().copied()))
+            .chain(self.transient_visuals.iter().copied())
+            .collect();
+        set_sprites_visible(ctx.world, entities, in_match);
+
+        for ship in &self.ships {
+            if let Some(entity) = ship.entity {
+                set_sprites_visible(ctx.world, [entity], in_match && blink_visible(ship.invincibility));
+            }
+        }
     }
+}
+
+/// Queue a radial shockwave for the deforming grid; the engine applies it next frame.
+pub(crate) fn ripple_grid(world: &mut World, position: Vec2, strength: f32, radius: f32) {
+    ripple(world, GridImpulse::Radial { position, strength, radius, attractive: false });
 }

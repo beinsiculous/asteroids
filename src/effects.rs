@@ -1,14 +1,15 @@
 //! Visual effect presets — particle configs.
 //!
-//! Centralizes the look of each event (rock shattered, ship destroyed) so
-//! tuning happens in one place. The deforming grid uses the engine's
-//! `default_playfield_grid` preset directly.
+//! Centralizes the look of each event (a meatieroid busted, a Funk crashed) so
+//! tuning happens in one place. The drawn one-shots (`die`, `crash`) play beside
+//! these; the deforming grid is the engine's `GridBackdrop`.
 
 use engine_core::prelude::*;
 
+use crate::art::MEAT_BURST_COLOR;
 use crate::types::AsteroidSize;
 
-/// Stony shrapnel when a rock shatters — bigger rocks throw more debris.
+/// Crumbs of meat when a meatieroid bursts — bigger ones throw more.
 pub(crate) fn asteroid_break_burst(size: AsteroidSize, theme: &ChaosTheme, tex: u32) -> ParticleConfig {
     let base = match size {
         AsteroidSize::Large => 32.0,
@@ -16,7 +17,7 @@ pub(crate) fn asteroid_break_burst(size: AsteroidSize, theme: &ChaosTheme, tex: 
         AsteroidSize::Small => 12.0,
     };
     let count = (base * theme.particle_count_mult).round() as usize;
-    let color = theme.structure_color;
+    let color = MEAT_BURST_COLOR;
     ParticleConfig::burst(count)
         .with_lifetime(0.25, 0.7)
         .with_speed(60.0, 260.0)
@@ -28,9 +29,8 @@ pub(crate) fn asteroid_break_burst(size: AsteroidSize, theme: &ChaosTheme, tex: 
         .with_texture(tex)
 }
 
-/// Big accent-colored blowout when the ship goes down.
-pub(crate) fn ship_death_burst(theme: &ChaosTheme, tex: u32) -> ParticleConfig {
-    let color = theme.accent_color;
+/// A big blowout in the Funk's own colour when it goes down.
+pub(crate) fn ship_death_burst(color: Vec4, theme: &ChaosTheme, tex: u32) -> ParticleConfig {
     let count = (70.0 * theme.particle_count_mult).round() as usize;
     ParticleConfig::burst(count)
         .with_lifetime(0.35, 1.0)

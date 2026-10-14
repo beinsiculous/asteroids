@@ -15,5 +15,14 @@ fn main() {
     #[cfg(feature = "editor")]
     editor_integration::run_game_with_editor(AsteroidsGame::default(), config).unwrap();
     #[cfg(not(feature = "editor"))]
-    engine_core::prelude::run_game(AsteroidsGame::default(), config).unwrap();
+    {
+        // One design size: wrapping, the border spawns, the grid and the star tiles all
+        // read the 800x600 field, and the world never scales with a native window, so a
+        // bigger one would wrap meatieroids mid-screen and run past the stars. Only the
+        // bare game is locked — the editor needs room for its panels, and the web page
+        // scales the whole canvas instead.
+        let mut config = config;
+        config.resizable = false;
+        engine_core::prelude::run_game(AsteroidsGame::default(), config).unwrap();
+    }
 }

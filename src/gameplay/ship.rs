@@ -1,29 +1,91 @@
-//! Ship control law, firing, and death/respawn. The whole flight model is
-//! the pure `integrate_ship` — gameplay reads rapier's velocity + heading,
-//! integrates, and pushes the result back with one `set_velocity` per frame.
+//! Ship control law, the drawn pose, firing, and death/respawn.
+//!
+//! The body's rotation is locked; the heading lives in `ShipState.heading`, and the
+//! sprite shows the nearest of the sixteen drawn headings. Thrust and fire both follow
+//! that drawn heading, so the ship goes and shoots where it is seen to point. The flight
+//! model is the pure `integrate_ship`: gameplay reads rapier's velocity, integrates, and
+//! pushes the result back with one `set_velocity` per frame.
 
 use engine_core::prelude::*;
-use std::f32::consts::FRAC_PI_2;
+use std::f32::consts::TAU;
 
 use super::entity_position;
+use super::ripple_grid;
 use super::rocks::circles_overlap;
+use crate::art::*;
 use crate::constants::*;
 use crate::effects;
+use crate::spawning::{spawn_effect, Effect};
 use crate::types::*;
 
-/// One frame of the flight model. `turn` is -1/0/+1 (+1 = counterclockwise),
-/// `rot` is the current heading. Thrust accelerates along the heading, drag
-/// bleeds speed every frame, and the result is clamped to `SHIP_MAX_SPEED`.
-pub(crate) fn integrate_ship(vel: Vec2, rot: f32, turn: f32, thrust: bool, dt: f32) -> (Vec2, f32) {
+/// The angle between adjacent drawn headings.
+const HEADING_STEP: f32 = TAU / HEADINGS as f32;
+
+/// One frame of turning: `turn` is -1/0/+1 (+1 = counterclockwise). The result stays in
+/// [0, 2π), so a right turn from east wraps to just under 2π instead of going negative.
+pub(crate) fn advance_heading(heading: f32, turn: f32, dt: f32) -> f32 {
+    let wrapped = (heading + turn * SHIP_TURN_SPEED * dt).rem_euclid(TAU);
+    // `rem_euclid` can round a tiny negative up to exactly 2π.
+    if wrapped >= TAU { 0.0 } else { wrapped }
+}
+
+/// The drawn heading nearest `heading`, 0..16 and never negative.
+pub(crate) fn displayed_heading(heading: f32) -> usize {
+    ((heading / HEADING_STEP).round() as i64).rem_euclid(HEADINGS as i64) as usize
+}
+
+/// The direction of the drawn heading nearest `heading`: where the ship thrusts and fires.
+pub(crate) fn heading_direction(heading: f32) -> Vec2 {
+    let angle = displayed_heading(heading) as f32 * HEADING_STEP;
+    Vec2::new(angle.cos(), angle.sin())
+}
+
+/// One frame of the flight model. Thrust accelerates along `direction`, drag bleeds
+/// speed every frame, and the result is clamped to `SHIP_MAX_SPEED`.
+pub(crate) fn integrate_ship(vel: Vec2, direction: Vec2, thrust: bool, dt: f32) -> Vec2 {
     let mut vel = vel;
     if thrust {
-        vel += Vec2::new(rot.cos(), rot.sin()) * SHIP_THRUST * dt;
+        vel += direction * SHIP_THRUST * dt;
     }
     vel *= (1.0 - SHIP_DRAG * dt).max(0.0);
     if vel.length() > SHIP_MAX_SPEED {
         vel = vel.normalize() * SHIP_MAX_SPEED;
     }
-    (vel, turn * SHIP_TURN_SPEED)
+    vel
+}
+
+/// A drawn pose: which clip, and which frame of that clip's own frame list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ShipPose {
+    pub(crate) clip: &'static str,
+    pub(crate) frame: usize,
+}
+
+/// What a ship heading `heading`, thrusting or not, shows `play_time` seconds into the
+/// match. The frame comes from the match clock rather than from the clip's own start,
+/// so turning through a heading lands mid-blink on the right frame instead of
+/// restarting the clip at every sixteenth of a turn.
+pub(crate) fn ship_pose(heading: f32, thrusting: bool, play_time: f32) -> ShipPose {
+    let index = displayed_heading(heading);
+    let (clips, frame_seconds) = if thrusting {
+        (&THRUST_HEADINGS, THRUST_FRAME_SECONDS)
+    } else {
+        (&IDLE_HEADINGS, IDLE_FRAME_SECONDS)
+    };
+    let frame = (play_time.max(0.0) / frame_seconds) as usize % HEADING_CLIP_FRAMES;
+    ShipPose { clip: clips[index], frame }
+}
+
+/// Write a pose onto a ship: the clip and the frame, held still. `play` is deliberately
+/// not used — it restarts the clip.
+fn write_pose(world: &mut World, entity: EntityId, pose: ShipPose) {
+    let Some(animation) = world.get_mut::<SpriteAnimation>(entity) else {
+        return;
+    };
+    animation.current_clip = Some(pose.clip.to_string());
+    animation.current_frame = pose.frame;
+    animation.playing = false;
+    animation.finished = false;
 }
 
 pub(crate) fn can_fire(cooldown: f32, live_bullets: usize) -> bool {
@@ -49,10 +111,10 @@ pub(crate) fn coop_over(lives: &[u32]) -> bool {
 }
 
 impl AsteroidsGame {
-    /// Read input for every live ship, run the flight model, push one
-    /// `set_velocity` each, and fire. In co-op each ship reads its own
-    /// player; in single player the lone ship reads both players merged so
-    /// either keyboard cluster or pad flies it.
+    /// Read input for every live ship, turn its heading, run the flight model, push one
+    /// `set_velocity` each, and fire. In co-op each ship reads its own player; in single
+    /// player the lone ship reads both players merged so either keyboard cluster or pad
+    /// flies it.
     pub(crate) fn update_ship_control(&mut self, ctx: &mut GameContext) {
         if self.state != GameState::Playing {
             for ship in &mut self.ships {
@@ -66,15 +128,25 @@ impl AsteroidsGame {
                 continue;
             };
             let (turn, thrust, fire) = self.ship_input(ctx, index);
-            self.ships[index].thrusting = thrust;
+            let ship = &mut self.ships[index];
+            ship.thrusting = thrust;
+            ship.heading = advance_heading(ship.heading, turn, ctx.delta_time);
+            let direction = heading_direction(ship.heading);
 
             let (vel, _) = self.physics.get_body_velocity(entity).unwrap_or((Vec2::ZERO, 0.0));
-            let rot =
-                ctx.world.get::<Transform2D>(entity).map(|t| t.rotation).unwrap_or(FRAC_PI_2);
-            let (new_vel, angular) = integrate_ship(vel, rot, turn, thrust, ctx.delta_time);
-            self.physics.set_velocity(entity, new_vel, angular);
+            let new_vel = integrate_ship(vel, direction, thrust, ctx.delta_time);
+            self.physics.set_velocity(entity, new_vel, 0.0);
 
             self.update_firing(ctx, index, fire);
+        }
+    }
+
+    /// Write every live ship's drawn pose for this frame.
+    pub(crate) fn pose_ships(&self, world: &mut World) {
+        for ship in &self.ships {
+            if let Some(entity) = ship.entity {
+                write_pose(world, entity, ship_pose(ship.heading, ship.thrusting, self.play_time));
+            }
         }
     }
 
@@ -118,19 +190,16 @@ impl AsteroidsGame {
             return;
         }
         let Some(entity) = ship.entity else { return };
-        let Some((pos, forward)) =
-            ctx.world.get::<Transform2D>(entity).map(|t| (t.position, t.forward()))
-        else {
-            return;
-        };
-        self.spawn_bullet(ctx.world, index, pos + forward * MUZZLE_OFFSET, forward * BULLET_SPEED);
+        let Some(pos) = entity_position(ctx.world, entity) else { return };
+        let direction = heading_direction(ship.heading);
+        self.spawn_bullet(ctx.world, index, pos + direction * MUZZLE_OFFSET, direction * BULLET_SPEED);
         self.ships[index].fire_cooldown = FIRE_COOLDOWN;
     }
 
-    /// Ship-vs-rock is a game-side circle test, not a collision event: a
-    /// rock that drifted over a ship during i-frames must still kill the
+    /// Ship-vs-meatieroid is a game-side circle test, not a collision event: a
+    /// meatieroid that drifted over a ship during i-frames must still kill the
     /// moment mercy runs out, and a stale `started` event can't do that.
-    /// Each live ship is checked against every rock with its own i-frames.
+    /// Each live ship is checked against every body with its own i-frames.
     pub(crate) fn check_ship_hit(&mut self, ctx: &mut GameContext) {
         let mut killed: Vec<usize> = Vec::new();
         for index in 0..self.ships.len() {
@@ -142,12 +211,7 @@ impl AsteroidsGame {
             let Some(ship_pos) = entity_position(ctx.world, entity) else { continue };
             let hit = self.asteroids.iter().any(|rock| {
                 entity_position(ctx.world, rock.entity).is_some_and(|p| {
-                    circles_overlap(
-                        ship_pos,
-                        SHIP_COLLIDER_RADIUS,
-                        p,
-                        rock.size.radius() * ASTEROID_COLLIDER_SCALE,
-                    )
+                    circles_overlap(ship_pos, SHIP_COLLIDER_RADIUS, p, rock.size.radius())
                 })
             });
             if hit {
@@ -159,16 +223,30 @@ impl AsteroidsGame {
         }
     }
 
-    /// Destroy ship `index`: burst, grid ripple, dock a life. At zero lives
-    /// the body is despawned and the survivor plays on; the match only ends
-    /// once every ship is out (`coop_over`).
+    /// Destroy ship `index`: its crash plays where it was, turned to its drawn heading,
+    /// with a burst and a grid ripple, and it docks a life. At zero lives the body is
+    /// despawned and the survivor plays on; the match only ends once every ship is out
+    /// (`coop_over`).
     fn kill_ship(&mut self, ctx: &mut GameContext, index: usize) {
         let Some(entity) = self.ships[index].entity else { return };
         let pos = entity_position(ctx.world, entity).unwrap_or(Vec2::ZERO);
+        let pilot = Pilot::for_ship(index);
+        let art = pilot.art();
+        let crash = spawn_effect(ctx.world, &Effect {
+            name: "Crash",
+            spec: art.sheet,
+            sheet: self.sheets.funk(pilot),
+            depth: art.depth,
+            clip: CRASH,
+            position: pos,
+            rotation: displayed_heading(self.ships[index].heading) as f32 * HEADING_STEP,
+        });
+        self.transient_visuals.push(crash);
+
         let theme = ChaosTheme::for_mode(self.chaos_mode);
-        ctx.particles.spawn_burst(pos, &effects::ship_death_burst(&theme, self.tex_id));
+        ctx.particles.spawn_burst(pos, &effects::ship_death_burst(art.burst_color, &theme, self.tex_id));
         let (strength, radius) = GRID_IMPULSE_SHIP_DEATH;
-        self.ripple_grid(pos, strength, radius);
+        ripple_grid(ctx.world, pos, strength, radius);
 
         self.ships[index].lives = self.ships[index].lives.saturating_sub(1);
         self.ships[index].shot_streak = 0;
@@ -187,15 +265,15 @@ impl AsteroidsGame {
         }
     }
 
-    /// Park ship `index` at its spawn pose with zero velocity. Writing
-    /// `Transform2D` directly teleports the live rapier body (GPP-09) — and
-    /// doubles as the initial pose before the body first syncs.
+    /// Park ship `index` at its spawn point, facing its spawn heading, with zero
+    /// velocity. Writing `Transform2D.position` teleports the live rapier body;
+    /// the rotation is left at 0, because the heading turns the drawn ship, not the body.
     pub(crate) fn reset_ship_pose(&mut self, world: &mut World, index: usize) {
         let Some(entity) = self.ships[index].entity else { return };
         let (pos, facing) = crate::spawning::ship_spawn_pose(self.ships.len(), index);
+        self.ships[index].heading = facing;
         if let Some(t) = world.get_mut::<Transform2D>(entity) {
             t.position = pos;
-            t.rotation = facing;
         }
         self.physics.set_velocity(entity, Vec2::ZERO, 0.0);
     }

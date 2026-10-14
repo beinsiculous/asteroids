@@ -1,16 +1,22 @@
-//! Behavioral tests: pure rules (flight model, wrapping, splitting, waves)
-//! and headless physics simulations proving every rapier pair the game
-//! depends on, using the exact spawn recipes.
+//! Behavioral tests: pure rules (flight model, the drawn heading, wrapping, splitting,
+//! waves) and headless physics simulations proving every rapier pair the game depends
+//! on, using the exact spawn recipes.
 
 use engine_core::prelude::*;
-use std::f32::consts::{FRAC_PI_2, PI};
+use std::f32::consts::{FRAC_PI_2, PI, TAU};
 
+use crate::art::*;
 use crate::constants::*;
 use crate::gameplay::*;
 use crate::menu::mode_hint;
-use crate::spawning::{ship_spawn_pose, spawn_ship};
+use crate::spawning::{child_machine, ship_spawn_pose, shot_rotation, spawn_ship, wave_machine};
 use crate::types::*;
-use crate::wireframe::*;
+
+/// A ship body as `spawn_ships` builds it, on placeholder sheets: the physics tests need
+/// only its body and collider.
+fn ship_at(world: &mut World, position: Vec2) -> EntityId {
+    spawn_ship(world, &Sheets::default(), Pilot::Deion, position)
+}
 
 /// A fabricated started contact between two entities, for pairing tests.
 fn started_contact(a: EntityId, b: EntityId) -> CollisionData {
@@ -60,21 +66,30 @@ fn wrap_position_wraps_vertically_only_beyond_margin() {
 // --- Flight model ---
 
 #[test]
-fn thrust_accelerates_along_heading() {
-    let (vel, _) = integrate_ship(Vec2::ZERO, 0.0, 0.0, true, DT);
+fn thrust_accelerates_along_the_drawn_heading() {
+    let vel = integrate_ship(Vec2::ZERO, heading_direction(0.0), true, DT);
     assert!(vel.x > 0.0, "heading 0 = +x, thrust must push +x");
     assert!(vel.y.abs() < 1e-4);
 
-    let (vel, _) = integrate_ship(Vec2::ZERO, FRAC_PI_2, 0.0, true, DT);
+    let vel = integrate_ship(Vec2::ZERO, heading_direction(FRAC_PI_2), true, DT);
     assert!(vel.y > 0.0, "heading pi/2 = +y, thrust must push +y");
     assert!(vel.x.abs() < 1e-3);
+
+    // Just short of halfway to the next drawn heading, thrust still goes straight east:
+    // the ship goes where it is drawn pointing, not along the raw heading.
+    let vel = integrate_ship(Vec2::ZERO, heading_direction(0.19), true, DT);
+    assert!(vel.y.abs() < 1e-4, "heading 0.19 rad draws heading 00 and thrusts along it, got {vel:?}");
+    // Past halfway it is drawn at 22.5 degrees, and thrusts along that.
+    let vel = integrate_ship(Vec2::ZERO, heading_direction(0.21), true, DT);
+    let bearing = vel.y.atan2(vel.x);
+    assert!((bearing - TAU / 16.0).abs() < 1e-4, "heading 0.21 rad thrusts along 22.5 degrees, got {bearing}");
 }
 
 #[test]
 fn speed_clamps_at_max() {
     let mut vel = Vec2::ZERO;
     for _ in 0..3000 {
-        (vel, _) = integrate_ship(vel, 0.3, 0.0, true, DT);
+        vel = integrate_ship(vel, heading_direction(0.3), true, DT);
     }
     assert!(vel.length() <= SHIP_MAX_SPEED + 0.001, "speed {} over cap", vel.length());
     assert!(vel.length() > SHIP_MAX_SPEED * 0.95, "thrust should reach the cap");
@@ -85,7 +100,7 @@ fn drag_decays_coasting_velocity_without_reversing() {
     let mut vel = Vec2::new(200.0, 0.0);
     let start = vel.length();
     for _ in 0..120 {
-        (vel, _) = integrate_ship(vel, 0.0, 0.0, false, DT);
+        vel = integrate_ship(vel, heading_direction(0.0), false, DT);
         assert!(vel.x >= 0.0, "drag must never reverse the drift direction");
     }
     assert!(vel.length() < start, "coasting must bleed speed");
@@ -93,13 +108,67 @@ fn drag_decays_coasting_velocity_without_reversing() {
 }
 
 #[test]
-fn turn_input_maps_to_angular_velocity() {
-    let (_, ccw) = integrate_ship(Vec2::ZERO, 0.0, 1.0, false, DT);
-    let (_, cw) = integrate_ship(Vec2::ZERO, 0.0, -1.0, false, DT);
-    let (_, idle) = integrate_ship(Vec2::ZERO, 0.0, 0.0, false, DT);
-    assert_eq!(ccw, SHIP_TURN_SPEED);
-    assert_eq!(cw, -SHIP_TURN_SPEED);
-    assert_eq!(idle, 0.0);
+fn turn_input_advances_the_heading_and_keeps_it_in_range() {
+    let start = 1.0;
+    assert!((advance_heading(start, 1.0, DT) - (start + SHIP_TURN_SPEED * DT)).abs() < 1e-6, "+1 turns counterclockwise");
+    assert!((advance_heading(start, -1.0, DT) - (start - SHIP_TURN_SPEED * DT)).abs() < 1e-6, "-1 turns clockwise");
+    assert_eq!(advance_heading(start, 0.0, DT), start);
+
+    // A right turn from east wraps to just under a full turn instead of going negative.
+    let wrapped = advance_heading(0.0, -1.0, DT);
+    assert!((0.0..TAU).contains(&wrapped), "heading {wrapped} left [0, 2pi)");
+    assert!((wrapped - (TAU - SHIP_TURN_SPEED * DT)).abs() < 1e-5);
+    // A left turn past a full turn wraps to just past east.
+    let wrapped = advance_heading(TAU - 0.01, 1.0, DT);
+    assert!((0.0..TAU).contains(&wrapped));
+    // A turn that lands a hair below zero never rounds up to exactly 2pi.
+    assert!(advance_heading(1e-9, -1e-6, 1.0) < TAU);
+}
+
+// --- The drawn heading ---
+
+#[test]
+fn every_heading_draws_its_own_clips() {
+    for index in 0..HEADINGS {
+        let heading = index as f32 * TAU / HEADINGS as f32;
+        assert_eq!(displayed_heading(heading), index);
+        assert_eq!(ship_pose(heading, false, 0.0).clip, IDLE_HEADINGS[index]);
+        assert_eq!(ship_pose(heading, true, 0.0).clip, THRUST_HEADINGS[index]);
+    }
+    assert_eq!(IDLE_HEADINGS[4], "idle_04", "the spawn heading, pi/2, is the fifth drawn");
+    assert_eq!(displayed_heading(FRAC_PI_2), 4);
+}
+
+#[test]
+fn negative_and_full_turn_headings_draw_a_real_heading() {
+    // A heading is kept in [0, 2pi), but the display never trusts it: a negative or
+    // full-turn angle still names one of the sixteen.
+    assert_eq!(displayed_heading(-0.01), 0);
+    assert_eq!(displayed_heading(-TAU / 16.0), 15);
+    assert_eq!(displayed_heading(TAU - 0.01), 0, "a hair under a full turn rounds to east");
+    assert_eq!(displayed_heading(TAU), 0);
+    assert_eq!(displayed_heading(TAU + TAU / 16.0), 1);
+    assert_eq!(ship_pose(-0.3, false, 0.0).clip, "idle_15");
+}
+
+#[test]
+fn turning_across_a_heading_boundary_keeps_the_frame() {
+    // The frame comes from the match clock, so turning through a heading lands on the
+    // frame the blink is on rather than restarting the clip.
+    let boundary = TAU / 32.0;
+    for play_time in [0.0, 0.1, 0.2, 0.33, 1.7] {
+        for thrusting in [false, true] {
+            let before = ship_pose(boundary - 1e-4, thrusting, play_time);
+            let after = ship_pose(boundary + 1e-4, thrusting, play_time);
+            assert_ne!(before.clip, after.clip, "the boundary changes the drawn heading");
+            assert_eq!(before.frame, after.frame, "at {play_time}s the frame survives the turn");
+        }
+    }
+    // Both clips step through their two frames at the art's rate.
+    assert_eq!(ship_pose(0.0, false, 0.0).frame, 0);
+    assert_eq!(ship_pose(0.0, false, IDLE_FRAME_SECONDS + 0.01).frame, 1);
+    assert_eq!(ship_pose(0.0, false, 2.0 * IDLE_FRAME_SECONDS + 0.01).frame, 0);
+    assert_eq!(ship_pose(0.0, true, THRUST_FRAME_SECONDS + 0.01).frame, 1);
 }
 
 #[test]
@@ -157,39 +226,6 @@ fn split_velocity_is_deterministic_and_children_diverge() {
     let angle_between = a.angle_to(b).abs();
     assert!(angle_between > 0.3, "children must fan out, got {angle_between} rad");
     assert!(a.length() > parent.length(), "children fly faster than the parent");
-}
-
-#[test]
-fn asteroid_polygon_is_deterministic_and_varies_by_seed() {
-    let a = asteroid_polygon(7, 40.0);
-    assert_eq!(a, asteroid_polygon(7, 40.0));
-    assert_ne!(a, asteroid_polygon(8, 40.0), "different seeds, different rocks");
-}
-
-#[test]
-fn asteroid_polygon_vert_count_and_radius_bounds() {
-    let radius = ASTEROID_RADII[0];
-    let poly = asteroid_polygon(123, radius);
-    assert_eq!(poly.len(), ASTEROID_VERTS);
-    for v in &poly {
-        let r = v.length();
-        assert!(r >= radius * 0.72 - 0.001 && r <= radius * 1.18 + 0.001, "vertex radius {r}");
-    }
-}
-
-#[test]
-fn ship_hull_is_closed_with_nose_along_heading() {
-    let pos = Vec2::new(10.0, -5.0);
-    let rot = 0.7;
-    let segs = ship_segments(pos, rot);
-    // Closed loop: each segment ends where the next begins.
-    for i in 0..segs.len() {
-        assert_eq!(segs[i].1, segs[(i + 1) % segs.len()].0);
-    }
-    // The nose sits SHIP_SIZE along the heading.
-    let nose = segs[0].0;
-    let expected = pos + Vec2::new(rot.cos(), rot.sin()) * SHIP_SIZE;
-    assert!((nose - expected).length() < 0.001);
 }
 
 #[test]
@@ -261,8 +297,8 @@ fn wave_rocks_spawn_clear_of_both_ships() {
 
     let (p0, f0) = ship_spawn_pose(2, 0);
     let (p1, f1) = ship_spawn_pose(2, 1);
-    game.ships.push(ShipState::new(spawn_ship(&mut world, p0, f0)));
-    game.ships.push(ShipState::new(spawn_ship(&mut world, p1, f1)));
+    game.ships.push(ShipState { heading: f0, ..ShipState::new(ship_at(&mut world, p0)) });
+    game.ships.push(ShipState { heading: f1, ..ShipState::new(ship_at(&mut world, p1)) });
 
     game.wave = 4;
     game.spawn_wave(&mut world);
@@ -355,7 +391,7 @@ fn ship_spawn_poses_are_disjoint_in_coop_and_centered_solo() {
 #[test]
 fn bullets_never_test_against_ships() {
     let mut world = World::new();
-    let other_ship = spawn_ship(&mut world, Vec2::new(80.0, 0.0), FRAC_PI_2);
+    let other_ship = ship_at(&mut world, Vec2::new(80.0, 0.0));
     let bullet = world.spawn().id();
     let rock = world.spawn().id();
 
@@ -383,14 +419,6 @@ fn circles_overlap_matches_radius_sum() {
 }
 
 #[test]
-fn closed_polygon_emits_a_vertex_pair_per_edge() {
-    let mut lines = Vec::new();
-    let square = [Vec2::ZERO, Vec2::X, Vec2::ONE, Vec2::Y];
-    push_closed_polygon(&mut lines, &square, Vec2::ZERO, 0.0, Vec4::ONE, 1.0);
-    assert_eq!(lines.len(), 8, "4 edges = 8 line-list vertices");
-}
-
-#[test]
 fn every_mode_has_a_hint() {
     for mode in ChaosMode::ALL {
         assert!(!mode_hint(mode).is_empty(), "{mode:?} needs a mode-select hint");
@@ -408,7 +436,7 @@ fn bullet_registers_hit_on_dynamic_asteroid() {
 
     game.ships.push(ShipState::default());
     let rock = game.spawn_asteroid(
-        &mut world, AsteroidSize::Large, Vec2::new(0.0, 150.0), Vec2::ZERO, 0.0);
+        &mut world, AsteroidSize::Large, Vec2::new(0.0, 150.0), Vec2::ZERO, 0.0, wave_machine());
     game.spawn_bullet(&mut world, 0, Vec2::ZERO, Vec2::new(0.0, BULLET_SPEED));
     let bullet = game.ships[0].bullets[0];
 
@@ -432,9 +460,9 @@ fn asteroids_bounce_off_each_other() {
     let mut world = World::new();
 
     let a = game.spawn_asteroid(
-        &mut world, AsteroidSize::Medium, Vec2::new(-120.0, 0.0), Vec2::new(100.0, 0.0), 0.0);
+        &mut world, AsteroidSize::Medium, Vec2::new(-120.0, 0.0), Vec2::new(100.0, 0.0), 0.0, wave_machine());
     let b = game.spawn_asteroid(
-        &mut world, AsteroidSize::Medium, Vec2::new(120.0, 0.0), Vec2::new(-100.0, 0.0), 0.0);
+        &mut world, AsteroidSize::Medium, Vec2::new(120.0, 0.0), Vec2::new(-100.0, 0.0), 0.0, wave_machine());
 
     let mut bounced = false;
     for _ in 0..240 {
@@ -482,7 +510,7 @@ fn transform_write_teleports_live_body_preserving_velocity() {
 
     let vel = Vec2::new(120.0, 30.0);
     let rock = game.spawn_asteroid(
-        &mut world, AsteroidSize::Medium, Vec2::new(300.0, 0.0), vel, 0.5);
+        &mut world, AsteroidSize::Medium, Vec2::new(300.0, 0.0), vel, 0.5, wave_machine());
     for _ in 0..10 {
         game.physics.update(&mut world, DT);
     }
@@ -511,7 +539,7 @@ fn transform_write_teleports_live_body_preserving_velocity() {
 fn spawn_wave_respects_count_and_safe_distance() {
     let mut game = AsteroidsGame::default();
     let mut world = World::new();
-    let ship = spawn_ship(&mut world, Vec2::ZERO, FRAC_PI_2);
+    let ship = ship_at(&mut world, Vec2::ZERO);
     game.ships.push(ShipState::new(ship));
 
     game.wave = 3;
@@ -529,25 +557,204 @@ fn spawn_wave_respects_count_and_safe_distance() {
     }
 }
 
-/// The full flight model wired to a real body: thrust accelerates the ship
-/// in rapier, and the split constant sanity holds (spread is under a
-/// half-circle so children always keep some forward momentum).
+/// The full flight model wired to a real body: thrust along the drawn heading moves
+/// the ship in rapier while its locked body never turns, and the split constant sanity
+/// holds (spread is under a half-circle so children always keep some forward momentum).
 #[test]
-fn thrust_moves_the_real_ship_body() {
+fn thrust_moves_the_real_ship_body_along_its_heading() {
     let mut game = AsteroidsGame::default();
     let mut world = World::new();
-    let ship = spawn_ship(&mut world, Vec2::ZERO, FRAC_PI_2);
+    let ship = ship_at(&mut world, Vec2::ZERO);
     game.ships.push(ShipState::new(ship));
+    let heading = 3.0 * TAU / 16.0;
 
     for _ in 0..60 {
         let (vel, _) = game.physics.get_body_velocity(ship).unwrap_or((Vec2::ZERO, 0.0));
-        let rot = world.get::<Transform2D>(ship).map(|t| t.rotation).unwrap_or(FRAC_PI_2);
-        let (new_vel, angular) = integrate_ship(vel, rot, 0.0, true, DT);
-        game.physics.set_velocity(ship, new_vel, angular);
+        let new_vel = integrate_ship(vel, heading_direction(heading), true, DT);
+        game.physics.set_velocity(ship, new_vel, 0.0);
         game.physics.update(&mut world, DT);
     }
-    let pos = world.get::<Transform2D>(ship).expect("ship has a transform").position;
-    assert!(pos.y > 20.0, "one second of thrust must move the ship up, got {pos:?}");
+    let transform = world.get::<Transform2D>(ship).expect("ship has a transform");
+    assert!(transform.position.length() > 20.0, "one second of thrust must move the ship, got {:?}", transform.position);
+    let bearing = transform.position.y.atan2(transform.position.x);
+    assert!((bearing - heading).abs() < 1e-3, "the ship flew along {bearing}, not its heading {heading}");
+    assert_eq!(transform.rotation, 0.0, "the body never turns");
     // Split fan must stay under a half-circle so children keep momentum.
     const { assert!(SPLIT_SPREAD * 2.0 < PI) };
+}
+
+// --- The drawn sizes ---
+
+/// The body radii, the sprite offsets and the wrap margins are the measured numbers
+/// (`art_tests.rs` re-measures them from the pixels).
+#[test]
+fn the_size_table_is_the_measured_bodies() {
+    assert_eq!(ASTEROID_RADII, [29.5, 18.5, 11.5], "the drawn bodies' radii");
+    for size in [AsteroidSize::Large, AsteroidSize::Medium, AsteroidSize::Small] {
+        let sheet = size.art().sheet;
+        let (top_left, bottom_right) = sheet.bounds;
+        assert_eq!(bottom_right - top_left, Vec2::splat(2.0 * size.radius()), "{size:?}'s box is its body circle's");
+        assert_eq!(sheet.sprite_offset(), Vec2::new(-0.5, 1.5), "{size:?}'s body centre sits on the entity");
+        assert!(sheet.is_within_cell(), "{size:?}");
+        assert!(MEATIEROID_REACH[size.idx()] > size.radius(), "{size:?} wraps by its fist, past its body");
+    }
+    assert_eq!(MEATIEROID_REACH, [54.0, 30.0, 18.0]);
+    assert_eq!(SHIP_COLLIDER_RADIUS, 11.0);
+    assert_eq!(MUZZLE_OFFSET, FUNK_SPOUT_REACH + 4.0, "a shot leaves just past the spout");
+}
+
+// --- Splitting ---
+
+/// Every child spawned by one split, in fan order.
+fn split_once(chaos: ChaosMode, size: AsteroidSize, parent_vel: Vec2, start: u32) -> Vec<(Vec2, Vec2, AsteroidSize)> {
+    let mut game = AsteroidsGame { chaos_mode: chaos, spawn_counter: start, ..AsteroidsGame::default() };
+    let mut world = World::new();
+    game.spawn_children(&mut world, size, Vec2::ZERO, parent_vel);
+    let born: Vec<(EntityId, Vec2, AsteroidSize)> = game.asteroids.iter()
+        .map(|rock| {
+            let position = world.get::<Transform2D>(rock.entity).expect("a child has a transform").position;
+            (rock.entity, position, rock.size)
+        })
+        .collect();
+    // The launch velocities are buffered until the bodies first sync.
+    game.physics.update(&mut world, 1e-6);
+    born.into_iter()
+        .map(|(entity, position, size)| {
+            let (velocity, _) = game.physics.get_body_velocity(entity).expect("a child has a body");
+            (position, velocity, size)
+        })
+        .collect()
+}
+
+/// The split's jitter for a seed, as `split_velocity` draws it.
+fn jitter_for(seed: u32) -> f32 {
+    (hash_f32(seed) - 0.5) * 0.3
+}
+
+/// Starts for the seed stream that swing two neighbouring children toward each other
+/// hardest: `spawn_children` draws one seed per child and `spawn_asteroid` one more, so
+/// child `i` jitters by `start + 1 + 2i`. Picked from a million starts; the stream's
+/// hash never puts two such neighbours at the ±0.15 rad extreme together, and these are
+/// the closest it comes (about 0.115 rad each, inward).
+fn inward_extreme_starts(count: usize) -> Vec<u32> {
+    let mut best: Vec<(f32, u32)> = (0..1_000_000u32)
+        .map(|start| {
+            let swing = (0..count - 1)
+                .map(|left| jitter_for(start + 1 + 2 * left as u32).min(-jitter_for(start + 3 + 2 * left as u32)))
+                .fold(f32::MIN, f32::max);
+            (swing, start)
+        })
+        .collect();
+    best.sort_by(|a, b| b.0.total_cmp(&a.0));
+    best.into_iter().take(20).map(|(_, start)| start).collect()
+}
+
+/// A split's children are born clear of each other through the real spawn path, for
+/// both the two-way split and the Ridiculous three-way. Placed along the unjittered fan,
+/// a child is born at the same spot whatever its velocity's jitter — so starts that
+/// swing two neighbours toward each other hardest, which once closed the fan and
+/// overlapped the siblings, cannot move them.
+#[test]
+fn split_children_are_born_clear_of_each_other() {
+    let parent_vel = Vec2::new(60.0, 25.0);
+    let base = parent_vel.y.atan2(parent_vel.x);
+    for (chaos, size) in [
+        (ChaosMode::Normal, AsteroidSize::Large),
+        (ChaosMode::Ridiculous, AsteroidSize::Large),
+        (ChaosMode::Normal, AsteroidSize::Medium),
+    ] {
+        let count = split_spec(size, chaos).expect("a large or medium splits").1;
+        let extremes = inward_extreme_starts(count);
+        let birthplaces: Vec<Vec2> = split_once(chaos, size, parent_vel, 0).into_iter().map(|(position, _, _)| position).collect();
+        for start in extremes.iter().copied().chain(0..500) {
+            let children = split_once(chaos, size, parent_vel, start);
+            assert_eq!(children.len(), count);
+            for (index, &(position, velocity, _)) in children.iter().enumerate() {
+                assert!(position.distance(birthplaces[index]) < 1e-3, "{chaos:?} {size:?} start {start}: child {index} moved with its jitter");
+                let fan = base + (index as f32 - (count as f32 - 1.0) / 2.0) * SPLIT_SPREAD;
+                let jitter = (velocity.y.atan2(velocity.x) - fan + PI).rem_euclid(TAU) - PI;
+                assert!(jitter.abs() <= 0.15 + 1e-4, "the velocity keeps the split's own jitter");
+            }
+            for index in 0..count - 1 {
+                let (left, _, left_size) = children[index];
+                let (right, _, right_size) = children[index + 1];
+                let gap = left.distance(right) - left_size.radius() - right_size.radius();
+                assert!(gap > 1.5, "{chaos:?} {size:?} start {start}: siblings {index} and {} clear by only {gap}", index + 1);
+            }
+        }
+        let swing = extremes.iter()
+            .map(|&start| (0..count - 1).map(|left| jitter_for(start + 1 + 2 * left as u32).min(-jitter_for(start + 3 + 2 * left as u32))).fold(f32::MIN, f32::max))
+            .fold(f32::MIN, f32::max);
+        assert!(swing > 0.11, "{chaos:?} {size:?}: the chosen starts swing a pair inward by {swing} rad at best");
+    }
+}
+
+#[test]
+fn split_offsets_follow_the_unjittered_fan() {
+    let parent_vel = Vec2::new(0.0, 80.0);
+    let large = split_offset(parent_vel, AsteroidSize::Large, AsteroidSize::Medium, 0, 2);
+    assert!((large.length() - 44.53).abs() < 0.01, "a large's children sit 44.5 px out, got {}", large.length());
+    let medium = split_offset(parent_vel, AsteroidSize::Medium, AsteroidSize::Small, 1, 2);
+    assert!((medium.length() - 28.44).abs() < 0.01, "a medium's children sit 28.4 px out, got {}", medium.length());
+    let bearing = large.y.atan2(large.x);
+    assert!((bearing - (FRAC_PI_2 - SPLIT_SPREAD / 2.0)).abs() < 1e-5, "child 0 sits half a spread clockwise of the parent's heading");
+}
+
+/// A split's children are born flexing: `attack`, then `idle`.
+#[test]
+fn split_children_run_the_flex_machine() {
+    let machine = child_machine();
+    assert_eq!(machine.state(), ATTACK);
+    assert_eq!(wave_machine().state(), IDLE);
+}
+
+// --- Shots ---
+
+/// Each shot is turned once, at spawn, to its flight: the drawn icicle points up, so its
+/// turn is the velocity's bearing less a quarter turn. Its locked body flies straight, so
+/// physics never sees the rotation change, and no shot in flight is ever pushed back
+/// into rapier as an outside edit — which would teleport it.
+#[test]
+fn shots_are_turned_to_their_flight_and_never_pushed() {
+    let mut game = AsteroidsGame::default();
+    let mut world = World::new();
+    game.ships.push(ShipState::default());
+    game.ships.push(ShipState::default());
+    for index in 0..8 {
+        let angle = index as f32 * TAU / 8.0 + 0.1;
+        let direction = Vec2::new(angle.cos(), angle.sin());
+        game.spawn_bullet(&mut world, index % 2, direction * 30.0, direction * BULLET_SPEED);
+    }
+    let shots: Vec<EntityId> = game.ships.iter().flat_map(|ship| ship.bullets.iter().copied()).collect();
+    for frame in 0..20 {
+        game.physics.update(&mut world, DT);
+        assert_eq!(game.physics.external_edits_pushed_last_update(), 0, "frame {frame}: a shot was pushed as an edit");
+        for &shot in &shots {
+            let rotation = world.get::<Transform2D>(shot).expect("a shot has a transform").rotation;
+            let (velocity, _) = game.physics.get_body_velocity(shot).expect("a shot has a body");
+            let off = (rotation - shot_rotation(velocity) + PI).rem_euclid(TAU) - PI;
+            assert!(off.abs() < 1e-4, "frame {frame}: a shot drawn {off} rad off its flight");
+        }
+    }
+    assert!((shot_rotation(Vec2::Y) - 0.0).abs() < 1e-6, "a shot flying up is drawn as painted");
+    assert!((shot_rotation(Vec2::X) + FRAC_PI_2).abs() < 1e-6, "a shot flying east turns a quarter clockwise");
+}
+
+/// A co-op ship out of lives still scores the shots it left in flight, but a crossing
+/// never gives it a life back — one with no body to fly would keep the match from ever
+/// ending once the other ship goes down.
+#[test]
+fn an_eliminated_ship_scores_but_never_earns_a_life_back() {
+    let mut game = AsteroidsGame::default();
+    game.ships.push(ShipState { lives: 0, ..ShipState::default() });
+    game.ships.push(ShipState { lives: 1, ..ShipState::default() });
+    let mut mgr = AchievementManager::in_memory();
+    crate::achievements::register_all(&mut mgr);
+
+    game.award_points(&mut mgr, 0, EXTRA_LIFE_EVERY);
+    assert_eq!(game.ships[0].score, EXTRA_LIFE_EVERY, "the parting shot still scores");
+    assert_eq!(game.ships[0].lives, 0, "an eliminated ship stays out");
+    game.ships[1].lives = 0;
+    let lives: Vec<u32> = game.ships.iter().map(|ship| ship.lives).collect();
+    assert!(coop_over(&lives), "the match ends when the last flying ship goes down");
 }

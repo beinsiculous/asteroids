@@ -1,5 +1,5 @@
-//! UI text: menus, HUD, and the game-over overlay. World rendering (ship,
-//! rocks) is wireframe line art — see `wireframe.rs`.
+//! UI text: menus, HUD, and the game-over overlay. The world is sprites, drawn by
+//! the engine from the entities `spawning.rs` builds.
 
 use engine_core::prelude::*;
 use crate::achievements::DISPLAY_SECTIONS;
@@ -24,7 +24,7 @@ impl AsteroidsGame {
 
     fn draw_title(&self, ctx: &mut GameContext, selection: u8) {
         let style = self.menu_style();
-        let panel = title_panel("INSICULOUS ASTEROIDS", ctx.window_size);
+        let panel = title_panel("MEATIEROIDS", ctx.window_size);
         let mut y = panel.begin(ctx.ui, &style);
         for (i, item) in TITLE_ITEMS.iter().enumerate() {
             y = panel.item(ctx.ui, y, title_label(*item), i as u8 == selection, &style);

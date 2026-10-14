@@ -3,8 +3,9 @@
 
 use engine_core::prelude::*;
 
+use crate::art::Pilot;
 use crate::constants::*;
-use crate::spawning::ship_spawn_pose;
+use crate::spawning::{ship_spawn_pose, spawn_ship};
 use crate::types::*;
 
 impl AsteroidsGame {
@@ -35,6 +36,7 @@ impl AsteroidsGame {
 
         self.destroy_all_bullets(ctx.world);
         self.destroy_all_asteroids(ctx.world);
+        self.clear_transient_visuals(ctx.world);
         self.spawn_ships(ctx.world);
         self.apply_theme(ctx.world);
         self.spawn_wave(ctx.world);
@@ -42,8 +44,8 @@ impl AsteroidsGame {
     }
 
     /// Build a fresh set of ships for the current mode, despawning any that
-    /// linger from a previous match. Each gets its own spawn pose and a full
-    /// count of lives.
+    /// linger from a previous match. Each gets its pilot's Funk, its own spawn
+    /// point and heading, and a full count of lives.
     pub(crate) fn spawn_ships(&mut self, world: &mut World) {
         let stale: Vec<EntityId> =
             self.ships.iter_mut().filter_map(|s| s.entity.take()).collect();
@@ -54,7 +56,8 @@ impl AsteroidsGame {
         self.ships = (0..count)
             .map(|index| {
                 let (pos, facing) = ship_spawn_pose(count, index);
-                ShipState::new(crate::spawning::spawn_ship(world, pos, facing))
+                let entity = spawn_ship(world, &self.sheets, Pilot::for_ship(index), pos);
+                ShipState { heading: facing, ..ShipState::new(entity) }
             })
             .collect();
     }
@@ -65,7 +68,7 @@ impl AsteroidsGame {
         self.ships.iter().map(|s| s.lives).sum()
     }
 
-    /// Out of ships. The rocks keep drifting behind the game-over overlay;
+    /// Out of ships. The meatieroids keep drifting behind the game-over overlay;
     /// the next start clears them. This is the only transition into
     /// GameOver, so final scores are submitted here exactly once per match:
     /// the lone ship under "single", each co-op ship under "coop".
@@ -85,6 +88,7 @@ impl AsteroidsGame {
     pub(crate) fn reset_to_title(&mut self, world: &mut World) {
         self.destroy_all_bullets(world);
         self.destroy_all_asteroids(world);
+        self.clear_transient_visuals(world);
         let ships: Vec<EntityId> =
             self.ships.iter_mut().filter_map(|s| s.entity.take()).collect();
         for entity in ships {
@@ -108,9 +112,20 @@ impl AsteroidsGame {
         }
     }
 
+    /// End every `die` and `crash` still playing. An id the world has already dropped —
+    /// a one-shot whose clip ran out — is skipped: ids are generational, so a stale entry
+    /// can never name a newer entity.
+    pub(crate) fn clear_transient_visuals(&mut self, world: &mut World) {
+        for entity in self.transient_visuals.drain(..) {
+            world.remove_entity(&entity).ok();
+        }
+    }
+
     /// Add points to ship `ship_index`, unlock score tiers, and grant that
     /// ship a bonus life at every `EXTRA_LIFE_EVERY` crossing (each threshold
-    /// pays out exactly once, per ship).
+    /// pays out exactly once, per ship). A ship already out of lives still scores
+    /// the shots it left in flight but never earns a life back: one it has no body
+    /// to fly would keep `coop_over` from ever ending the match.
     pub(crate) fn award_points(
         &mut self,
         achievements: &mut AchievementManager,
@@ -125,22 +140,20 @@ impl AsteroidsGame {
         if ship.score >= SCORE_TIER_2 {
             achievements.unlock(crate::achievements::SCORE_30K);
         }
-        while ship.score >= ship.next_extra_life_at {
+        while ship.lives > 0 && ship.score >= ship.next_extra_life_at {
             ship.lives += 1;
             ship.next_extra_life_at += EXTRA_LIFE_EVERY;
         }
     }
 
-    /// Push the current `chaos_mode`'s look onto the live scenery:
-    /// background tint and a fresh grid. Wireframe colors read the theme
-    /// every frame, so they follow automatically.
+    /// Push the current `chaos_mode`'s look onto the grid. The mode pick happens after
+    /// `init()` spawned it, so the colour it was born with is the boot mode's.
     pub(crate) fn apply_theme(&mut self, world: &mut World) {
-        let theme = ChaosTheme::for_mode(self.chaos_mode);
-        if let Some(bg) = self.background {
-            if let Some(s) = world.get_mut::<Sprite>(bg) {
-                s.color = theme.bg_color;
+        let color = ChaosTheme::for_mode(self.chaos_mode).grid_color;
+        if let Some(backdrop) = self.backdrop {
+            if let Some(grid) = world.get_mut::<GridBackdrop>(backdrop) {
+                grid.color = color;
             }
         }
-        self.grid = Some(default_playfield_grid(&theme));
     }
 }

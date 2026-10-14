@@ -1,14 +1,16 @@
-//! Rock rules: screen wrapping, splitting, wave sizing, spawn placement,
+//! Meatieroid rules: screen wrapping, splitting, wave sizing, spawn placement,
 //! and bullet-hit resolution. The pure functions up top carry all the math;
 //! the impl below wires them to the world.
 
 use engine_core::prelude::*;
 use std::collections::HashSet;
 
-use super::entity_position;
+use super::{entity_position, ripple_grid};
 use crate::achievements;
+use crate::art::*;
 use crate::constants::*;
 use crate::effects;
+use crate::spawning::{child_machine, spawn_effect, Effect};
 use crate::types::*;
 
 /// Toroidal wrap: a point that leaves the field (half extents + margin)
@@ -53,21 +55,42 @@ pub(crate) fn split_spec(size: AsteroidSize, mode: ChaosMode) -> Option<(Asteroi
     }
 }
 
-/// Child velocity `index` of `count`: the parent direction fanned out by
-/// `SPLIT_SPREAD` with hash jitter, at parent speed × `SPLIT_SPEED_MULT`
-/// (± hash variance). Deterministic per seed.
+/// Child `index` of `count`'s direction in the fan, before any jitter: the parent's
+/// heading spread by `SPLIT_SPREAD` between neighbours, centred on it.
+fn fan_angle(parent_vel: Vec2, index: usize, count: usize) -> f32 {
+    parent_vel.y.atan2(parent_vel.x) + (index as f32 - (count as f32 - 1.0) / 2.0) * SPLIT_SPREAD
+}
+
+/// Child velocity `index` of `count`: the fan's direction with hash jitter, at parent
+/// speed × `SPLIT_SPEED_MULT` (± hash variance). Deterministic per seed.
 pub(crate) fn split_velocity(parent_vel: Vec2, index: usize, count: usize, seed: u32) -> Vec2 {
-    let base_angle = parent_vel.y.atan2(parent_vel.x);
-    let fan = (index as f32 - (count as f32 - 1.0) / 2.0) * SPLIT_SPREAD;
     let jitter = (hash_f32(seed) - 0.5) * 0.3;
-    let angle = base_angle + fan + jitter;
+    let angle = fan_angle(parent_vel, index, count) + jitter;
     let speed = parent_vel.length()
         * SPLIT_SPEED_MULT
         * (0.9 + 0.3 * hash_f32(seed.wrapping_add(1)));
     Vec2::new(angle.cos(), angle.sin()) * speed
 }
 
-/// Large rocks in wave `wave`: grows by one per wave up to the cap, plus
+/// Where child `index` of `count` is born, relative to its parent's centre: along the
+/// fan's unjittered direction, so two jitters can never close the fan, and far enough
+/// out that adjacent siblings — `SPLIT_SPREAD` apart at the same distance — clear each
+/// other's bodies by `SPLIT_SIBLING_GAP`. Solid restitution-1 bodies born overlapping
+/// would pop apart.
+pub(crate) fn split_offset(
+    parent_vel: Vec2,
+    parent: AsteroidSize,
+    child: AsteroidSize,
+    index: usize,
+    count: usize,
+) -> Vec2 {
+    let clear_of_siblings = child.radius() / (SPLIT_SPREAD / 2.0).sin() + SPLIT_SIBLING_GAP;
+    let distance = (SPLIT_OFFSET_PARENT_RADII * parent.radius()).max(clear_of_siblings);
+    let angle = fan_angle(parent_vel, index, count);
+    Vec2::new(angle.cos(), angle.sin()) * distance
+}
+
+/// Large meatieroids in wave `wave`: grows by one per wave up to the cap, plus
 /// one extra in the Ridiculous family.
 pub(crate) fn wave_asteroid_count(wave: u32, mode: ChaosMode) -> usize {
     let base = (WAVE_BASE_ASTEROIDS + wave.saturating_sub(1) as usize).min(WAVE_MAX_ASTEROIDS);
@@ -191,21 +214,35 @@ impl AsteroidsGame {
         }
     }
 
-    /// Destroy a rock hit by ship `ship_index`: effects, scoring, skill
-    /// achievements, and the split into smaller children (offset outward so
-    /// the solid bodies don't spawn deeply interpenetrated). Score, streak,
-    /// and the close-call check all follow the owning ship.
+    /// Destroy a meatieroid hit by ship `ship_index`: its `die` plays where it was, turned
+    /// as it was, beside a burst and a grid ripple; then scoring, skill achievements, and
+    /// the split into smaller children, born at once. Score, streak, and the close-call
+    /// check all follow the owning ship.
     pub(crate) fn shatter_asteroid(&mut self, ctx: &mut GameContext, ship_index: usize, entity: EntityId) {
         let Some(idx) = self.asteroids.iter().position(|r| r.entity == entity) else { return };
         let rock = self.asteroids.swap_remove(idx);
-        let pos = entity_position(ctx.world, entity).unwrap_or(Vec2::ZERO);
+        let (pos, rotation) = ctx.world.get::<Transform2D>(entity)
+            .map(|t| (t.position, t.rotation))
+            .unwrap_or((Vec2::ZERO, 0.0));
         let (vel, _) = self.physics.get_body_velocity(entity).unwrap_or((Vec2::ZERO, 0.0));
         self.physics.destroy_entity(ctx.world, entity);
+
+        let art = rock.size.art();
+        let die = spawn_effect(ctx.world, &Effect {
+            name: "Meatieroid Die",
+            spec: art.sheet,
+            sheet: self.sheets.meatieroid(rock.size),
+            depth: art.depth,
+            clip: DIE,
+            position: pos,
+            rotation,
+        });
+        self.transient_visuals.push(die);
 
         let theme = ChaosTheme::for_mode(self.chaos_mode);
         ctx.particles.spawn_burst(pos, &effects::asteroid_break_burst(rock.size, &theme, self.tex_id));
         let (strength, radius) = GRID_IMPULSE_BREAK[rock.size.idx()];
-        self.ripple_grid(pos, strength, radius);
+        ripple_grid(ctx.world, pos, strength, radius);
 
         self.award_points(ctx.achievements, ship_index, rock.size.score());
         self.ships[ship_index].shot_streak += 1;
@@ -223,30 +260,36 @@ impl AsteroidsGame {
         }
         self.last_kill_time = self.play_time;
 
-        if let Some((child_size, count)) = split_spec(rock.size, self.chaos_mode) {
-            for i in 0..count {
-                let seed = self.next_seed();
-                let child_vel = split_velocity(vel, i, count, seed);
-                let child_pos = pos + child_vel.normalize_or_zero() * rock.size.radius() * 1.2;
-                let spin = (hash_f32(seed.wrapping_add(7)) - 0.5) * 2.0 * ASTEROID_SPIN_MAX;
-                self.spawn_asteroid(ctx.world, child_size, child_pos, child_vel, spin);
-            }
+        self.spawn_children(ctx.world, rock.size, pos, vel);
+    }
+
+    /// Split a meatieroid of `size` at `pos` moving at `vel` into its children, if it has
+    /// any: each placed along the unjittered fan (`split_offset`), flying along its
+    /// jittered velocity, and born flexing.
+    pub(crate) fn spawn_children(&mut self, world: &mut World, size: AsteroidSize, pos: Vec2, vel: Vec2) {
+        let Some((child_size, count)) = split_spec(size, self.chaos_mode) else { return };
+        for i in 0..count {
+            let seed = self.next_seed();
+            let child_vel = split_velocity(vel, i, count, seed);
+            let child_pos = pos + split_offset(vel, size, child_size, i, count);
+            let spin = (hash_f32(seed.wrapping_add(7)) - 0.5) * 2.0 * ASTEROID_SPIN_MAX;
+            self.spawn_asteroid(world, child_size, child_pos, child_vel, spin, child_machine());
         }
     }
 
-    /// Teleport anything that left the field to the opposite side. Writing
-    /// `Transform2D.position` on a live dynamic body is a rapier teleport
-    /// that preserves velocity (GPP-09) — proven by a sim test.
+    /// Teleport anything that left the field to the opposite side, once its farthest
+    /// drawn pixel has. Writing `Transform2D.position` on a live dynamic body is a rapier
+    /// teleport that preserves velocity — proven by a sim test.
     pub(crate) fn wrap_entities(&mut self, ctx: &mut GameContext) {
         let half = Vec2::new(WIN_W / 2.0, WIN_H / 2.0);
         let mut targets: Vec<(EntityId, f32)> = Vec::new();
         for ship in &self.ships {
             if let Some(entity) = ship.entity {
-                targets.push((entity, SHIP_SIZE));
+                targets.push((entity, FUNK_REACH));
             }
-            targets.extend(ship.bullets.iter().map(|&b| (b, BULLET_RADIUS)));
+            targets.extend(ship.bullets.iter().map(|&b| (b, SHOT_REACH)));
         }
-        targets.extend(self.asteroids.iter().map(|r| (r.entity, r.size.radius())));
+        targets.extend(self.asteroids.iter().map(|r| (r.entity, MEATIEROID_REACH[r.size.idx()])));
 
         for (entity, margin) in targets {
             if let Some(t) = ctx.world.get_mut::<Transform2D>(entity) {

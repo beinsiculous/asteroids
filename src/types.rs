@@ -1,5 +1,6 @@
 use engine_core::prelude::*;
 
+use crate::art::Pilot;
 use crate::constants::*;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -35,13 +36,17 @@ impl GameMode {
 /// the ship is out of lives (its body is despawned, the survivor plays on).
 pub(crate) struct ShipState {
     pub(crate) entity: Option<EntityId>,
+    /// Where the ship points, radians counterclockwise from east, kept in [0, 2π). The
+    /// body's rotation is locked: the sprite shows the nearest of the sixteen drawn
+    /// headings, and thrust and fire follow that drawn heading, never this raw angle.
+    pub(crate) heading: f32,
     /// This ship's live bullets — attribution (score, streak) follows the
     /// owning ship, and the live-bullet cap is per ship.
     pub(crate) bullets: Vec<EntityId>,
     pub(crate) fire_cooldown: f32,
     /// Seconds of i-frames left; > 0 means blinking and unhittable.
     pub(crate) invincibility: f32,
-    /// True while this ship's thrust is held; drives its flame.
+    /// True while this ship's thrust is held; draws its exhaust.
     pub(crate) thrusting: bool,
     pub(crate) lives: u32,
     pub(crate) score: u32,
@@ -55,6 +60,7 @@ impl Default for ShipState {
     fn default() -> Self {
         Self {
             entity: None,
+            heading: std::f32::consts::FRAC_PI_2,
             bullets: Vec::new(),
             fire_cooldown: 0.0,
             invincibility: 0.0,
@@ -94,7 +100,8 @@ impl AsteroidSize {
         }
     }
 
-    /// Nominal (mean polygon) radius, world pixels.
+    /// The round body's radius, world pixels: what is drawn and what collides. The arms
+    /// and fists reach past it and are drawn only.
     pub(crate) fn radius(self) -> f32 {
         ASTEROID_RADII[self.idx()]
     }
@@ -108,13 +115,61 @@ impl AsteroidSize {
     }
 }
 
-/// A live rock: its body plus the hash-seeded local-space polygon generated
-/// once at spawn (stable outline, no per-frame hashing).
+/// A live meatieroid: its body and its size.
 pub(crate) struct Asteroid {
     pub(crate) entity: EntityId,
     pub(crate) size: AsteroidSize,
-    /// Local-space outline vertices, already radius-scaled.
-    pub(crate) shape: Vec<Vec2>,
+}
+
+/// Every loaded sheet. Placeholders until `init` loads the synced art.
+pub(crate) struct Sheets {
+    pub(crate) flying_funk: SpriteSheet,
+    pub(crate) flying_funk_player_two: SpriteSheet,
+    pub(crate) meatieroid_large: SpriteSheet,
+    pub(crate) meatieroid_medium: SpriteSheet,
+    pub(crate) meatieroid_small: SpriteSheet,
+    pub(crate) icicle: SpriteSheet,
+    pub(crate) ice_chip: SpriteSheet,
+    pub(crate) space: SpriteSheet,
+}
+
+impl Sheets {
+    pub(crate) fn funk(&self, pilot: Pilot) -> &SpriteSheet {
+        match pilot {
+            Pilot::Deion => &self.flying_funk,
+            Pilot::Cubert => &self.flying_funk_player_two,
+        }
+    }
+
+    pub(crate) fn shot(&self, pilot: Pilot) -> &SpriteSheet {
+        match pilot {
+            Pilot::Deion => &self.icicle,
+            Pilot::Cubert => &self.ice_chip,
+        }
+    }
+
+    pub(crate) fn meatieroid(&self, size: AsteroidSize) -> &SpriteSheet {
+        match size {
+            AsteroidSize::Large => &self.meatieroid_large,
+            AsteroidSize::Medium => &self.meatieroid_medium,
+            AsteroidSize::Small => &self.meatieroid_small,
+        }
+    }
+}
+
+impl Default for Sheets {
+    fn default() -> Self {
+        Self {
+            flying_funk: SpriteSheet::placeholder(),
+            flying_funk_player_two: SpriteSheet::placeholder(),
+            meatieroid_large: SpriteSheet::placeholder(),
+            meatieroid_medium: SpriteSheet::placeholder(),
+            meatieroid_small: SpriteSheet::placeholder(),
+            icicle: SpriteSheet::placeholder(),
+            ice_chip: SpriteSheet::placeholder(),
+            space: SpriteSheet::placeholder(),
+        }
+    }
 }
 
 pub struct AsteroidsGame {
@@ -126,8 +181,16 @@ pub struct AsteroidsGame {
     pub(crate) ships: Vec<ShipState>,
     pub(crate) mode: GameMode,
     pub(crate) asteroids: Vec<Asteroid>,
-    pub(crate) background: Option<EntityId>,
-    /// White 1x1 texture backing every sprite (bullets, particles, backdrop).
+    pub(crate) sheets: Sheets,
+    /// The star tiles, under everything; they stay up under the menus.
+    pub(crate) space: Option<EntityId>,
+    /// The deforming grid the engine simulates and draws between the night and the stars.
+    pub(crate) backdrop: Option<EntityId>,
+    /// Detached one-shots still playing — a meatieroid's `die`, a Funk's `crash`. Each ends
+    /// itself with its clip and is forgotten the next frame; the list is how a restart or a
+    /// quit ends the ones still playing.
+    pub(crate) transient_visuals: Vec<EntityId>,
+    /// White 1x1 texture the particle bursts draw with.
     pub(crate) tex_id: u32,
 
     pub(crate) wave: u32,
@@ -155,9 +218,7 @@ pub struct AsteroidsGame {
     /// pausable; see the pause gate in `update_gameplay`.
     pub(crate) pause: PauseMenu,
 
-    /// Deforming spring-mass grid drawn under the wireframes.
-    pub(crate) grid: Option<GridMesh>,
-    /// F1 toggles magenta collider outlines over the wireframes.
+    /// F1 toggles magenta collider outlines over the art.
     pub(crate) debug_colliders: bool,
 }
 
@@ -168,7 +229,10 @@ impl Default for AsteroidsGame {
             ships: Vec::new(),
             mode: GameMode::SinglePlayer,
             asteroids: Vec::new(),
-            background: None,
+            sheets: Sheets::default(),
+            space: None,
+            backdrop: None,
+            transient_visuals: Vec::new(),
             tex_id: 0,
             wave: 1,
             wave_clear_timer: 0.0,
@@ -180,7 +244,6 @@ impl Default for AsteroidsGame {
             chaos_mode: ChaosMode::Normal,
             frame_count: 0,
             pause: PauseMenu::new(),
-            grid: None,
             debug_colliders: false,
         }
     }
