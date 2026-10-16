@@ -24,6 +24,8 @@ mod menu;
 mod spawning;
 #[cfg(test)]
 mod test_support;
+#[cfg(test)]
+mod title_screen_tests;
 mod types;
 
 #[cfg(target_arch = "wasm32")]
@@ -85,6 +87,7 @@ impl Game for AsteroidsGame {
             .create_solid_color(1, 1, [255, 255, 255, 255])
             .unwrap_or_else(|error| panic!("the particles' white texture does not create: {error}"))
             .id;
+        self.title_art = TitleArt::load(ctx.assets, TITLE_ART);
 
         // Every sheet's path and cell is in `art.rs`; each PNG and its `.sheet.ron`
         // sidecar is a synced copy under `assets/sprites/`.

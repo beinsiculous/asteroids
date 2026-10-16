@@ -182,6 +182,8 @@ pub struct AsteroidsGame {
     pub(crate) mode: GameMode,
     pub(crate) asteroids: Vec<Asteroid>,
     pub(crate) sheets: Sheets,
+    /// Meatieroids' title art over the title menu; `None` keeps the plain centred menu.
+    pub(crate) title_art: Option<TitleArt>,
     /// The star tiles, under everything; they stay up under the menus.
     pub(crate) space: Option<EntityId>,
     /// The deforming grid the engine simulates and draws between the night and the stars.
@@ -230,6 +232,7 @@ impl Default for AsteroidsGame {
             mode: GameMode::SinglePlayer,
             asteroids: Vec::new(),
             sheets: Sheets::default(),
+            title_art: None,
             space: None,
             backdrop: None,
             transient_visuals: Vec::new(),

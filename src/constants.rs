@@ -1,6 +1,7 @@
 //! Every tunable in one place. Sizes are world pixels; colliders take absolute pixels.
 //! What is measured from the art — boxes, reaches, depths — lives in `art.rs`.
 
+use engine_core::prelude::TitleMenu;
 use glam::Vec4;
 
 use crate::art::FUNK_SPOUT_REACH;
@@ -96,6 +97,21 @@ pub(crate) const STARTUP_CARDS: [&str; 2] = [
 /// The engine's icon: the window's until the game draws one of its own.
 pub(crate) const WINDOW_ICON: &str = "sprites/ai_insiculous_2d_maxwell_icon_64x64.png";
 
+// --- the title art --------------------------------------------------------------
+
+/// Meatieroids' title composition, 480×288, synced from deion_assets.
+pub(crate) const TITLE_ART: &str = "sprites/ai_meatieroids_title_480x288.png";
+/// The title menu as the layout needs it: the panel's width, this build's rows, the
+/// fit decided on the native build's rows (the web drops Achievements), and what is
+/// drawn under the panel: the two control lines at +24 and +48, whose glyphs run
+/// about 16 px lower still.
+pub(crate) const TITLE_MENU: TitleMenu = TitleMenu {
+    panel_width: 380.0,
+    rows: crate::menu::TITLE_ITEMS.len(),
+    fit_rows: crate::menu::TITLE_ITEMS.len() + cfg!(target_arch = "wasm32") as usize,
+    lines_below_panel: 64.0,
+};
+
 #[cfg(test)]
 mod startup_card_tests {
     use super::*;
@@ -109,12 +125,14 @@ mod startup_card_tests {
         assert_eq!(config.window_icon.as_deref(), Some(WINDOW_ICON));
 
         // The corners are BRANDING.md's named fills, which the engine letterboxes each
-        // card in; a redrawn backdrop that drifts from the contract fails here.
+        // card in; a redrawn backdrop that drifts from the contract fails here. The title
+        // art's size is pinned too: its content bottom is measured on that canvas.
         let assets = AssetManager::headless(AssetConfig::from(&config));
         for (path, size, corner) in [
             (STARTUP_CARDS[0], (320, 192), Some([0x14, 0x10, 0x1F, 0xFF])),
             (STARTUP_CARDS[1], (320, 192), Some([0x4A, 0x44, 0x58, 0xFF])),
             (WINDOW_ICON, (64, 64), None),
+            (TITLE_ART, (480, 288), Some([0x14, 0x10, 0x1F, 0xFF])),
         ] {
             let image = assets.image_backdrop(path).unwrap_or_else(|| panic!("{path} is synced"));
             assert_eq!((image.size.x, image.size.y), size, "{path}");
