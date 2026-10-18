@@ -1,6 +1,6 @@
 # Meatieroids
 
-Asteroids, re-skinned for the Deion universe and built on the [insiculous_2d](../../insiculous_2d) engine (game 5 of the 20 Games Challenge). Deion flies the **Flying Funk** — a gravy boat seen from above, drawn in sixteen headings — through a belt of **meatieroids**: roided-out flexing meatballs that tumble, bounce off each other, and burst into smaller, angrier meatballs that come out flexing. Under the stars, the engine's deforming grid ripples with every burst and every crash. Endless waves, screen wrap, four chaos modes, 11 achievements, and full 2-player co-op. The site lists it as Insiculous Asteroids until its name is settled.
+Asteroids, re-skinned for the Deion universe and built on the [insiculous_2d](../../insiculous_2d) engine (game 5 of the 20 Games Challenge). Deion flies the **Flying Funk** — a gravy boat seen from above, drawn in sixteen headings — through a belt of **meatieroids**: roided-out flexing meatballs that tumble, bounce off each other, and burst into smaller, angrier meatballs that come out flexing. Under the stars, the engine's deforming grid ripples with every burst and every crash. Endless waves, screen wrap, four chaos modes, 11 achievements, and full 2-player co-op. The site names it Meatieroids, at `/games/meatieroids/`; `/games/asteroids/` redirects there.
 
 ## Running
 
@@ -12,7 +12,7 @@ cargo run --features editor   # play inside the engine's scene editor
 cargo test                    # 65 headless tests
 ```
 
-The same build runs in the browser at [beinsiculous.com/playground/asteroids/](https://beinsiculous.com/playground/asteroids/): the game inside the editor, layout only — the rules are compiled in and nothing you change there persists.
+The same build runs in the browser at [beinsiculous.com/playground/meatieroids/](https://beinsiculous.com/playground/meatieroids/): the game inside the editor, layout only — the rules are compiled in and nothing you change there persists.
 
 ## Controls
 

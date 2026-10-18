@@ -500,7 +500,7 @@ fn stray_bullet_expires_via_lifetime_system() {
     );
 }
 
-/// GPP-09 wrap proof: writing `Transform2D.position` on a live dynamic body
+/// Screen-wrap proof: writing `Transform2D.position` on a live dynamic body
 /// teleports it in rapier AND preserves its velocity — the mechanism every
 /// screen wrap in the game relies on.
 #[test]

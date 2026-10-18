@@ -4,12 +4,12 @@
 //! On wasm the engine's save-path strings are localStorage keys
 //! (`docs/WEB_SAVES.md` in the engine repo is the contract): achievements,
 //! high scores, and input bindings persist per-origin under the
-//! `beinsiculous.games.asteroids.*` keys, byte-identical to the native
+//! `beinsiculous.games.meatieroids.*` keys, byte-identical to the native
 //! JSON save files, and the site reads them for its live boards.
 //!
 //! With `--features editor` the same library builds a SECOND bundle, served at
-//! `/playground/asteroids/`, that runs this game inside the engine's scene editor.
-//! That bundle writes none of the `beinsiculous.games.asteroids.*` keys above — an
+//! `/playground/meatieroids/`, that runs this game inside the engine's scene editor.
+//! That bundle writes none of the `beinsiculous.games.meatieroids.*` keys above — an
 //! editor session must not record achievements, scores or bindings the site's
 //! boards read — and keeps its camera and panel layout in a slot of its own.
 
@@ -33,7 +33,7 @@ use std::path::PathBuf;
 /// 3. the site's `src/content/games/<slug>.md` `wasm:` path,
 /// 4. the deployed dir `insiculous_web/public/games/<slug>/v<N>/`.
 #[cfg(not(feature = "editor"))]
-const ASSET_BASE: &str = "/games/asteroids/v4/assets";
+const ASSET_BASE: &str = "/games/meatieroids/v5/assets";
 
 /// Where the editor bundle serves its assets from; also its VFS key base.
 ///
@@ -79,9 +79,14 @@ pub fn start() {
 #[cfg(not(feature = "editor"))]
 fn run_configured_game() -> Result<(), engine_core::EngineError> {
     let config = crate::game_config(ASSET_BASE)
-        .with_achievement_save_path("beinsiculous.games.asteroids.achievements")
-        .with_input_settings_path("beinsiculous.games.asteroids.input")
-        .with_score_save_path("beinsiculous.games.asteroids.scores");
+        .with_achievement_save_path("beinsiculous.games.meatieroids.achievements")
+        .with_input_settings_path("beinsiculous.games.meatieroids.input")
+        .with_score_save_path("beinsiculous.games.meatieroids.scores")
+        // The keys this game saved under before its rename: read at boot and folded
+        // in, never written, so a player keeps their progress across the rename.
+        .with_former_achievement_save_path("beinsiculous.games.asteroids.achievements")
+        .with_former_input_settings_path("beinsiculous.games.asteroids.input")
+        .with_former_score_save_path("beinsiculous.games.asteroids.scores");
     run_game(crate::AsteroidsGame::default(), config)
 }
 
