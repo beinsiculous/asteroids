@@ -106,10 +106,9 @@ impl AsteroidsGame {
     /// the frame tail) despawned this frame expired without hitting anything —
     /// that's a miss, so the owning ship's sharpshooter streak resets.
     fn prune_expired_bullets(&mut self, ctx: &mut GameContext) {
-        let alive = ctx.world.entities();
         for ship in &mut self.ships {
             let before = ship.bullets.len();
-            ship.bullets.retain(|b| alive.contains(b));
+            ship.bullets.retain(|bullet| ctx.world.validate_entity(bullet).is_ok());
             if ship.bullets.len() < before {
                 ship.shot_streak = 0;
             }
@@ -119,8 +118,7 @@ impl AsteroidsGame {
     /// Forget every `die` and `crash` whose clip ran out: the engine despawned it, and the
     /// list would otherwise grow with every kill of an endless match.
     fn prune_ended_one_shots(&mut self, world: &World) {
-        let alive = world.entities();
-        self.transient_visuals.retain(|one_shot| alive.contains(one_shot));
+        self.transient_visuals.retain(|one_shot| world.validate_entity(one_shot).is_ok());
     }
 
     /// The match's sprites show only in a match (playing or game over); the stars and
