@@ -15,6 +15,7 @@ use super::rocks::circles_overlap;
 use crate::art::*;
 use crate::constants::*;
 use crate::effects;
+use crate::music::Moment;
 use crate::spawning::{spawn_effect, Effect};
 use crate::types::*;
 
@@ -129,6 +130,7 @@ impl AsteroidsGame {
             };
             let (turn, thrust, fire) = self.ship_input(ctx, index);
             let ship = &mut self.ships[index];
+            let thrust_started = thrust && !ship.thrusting;
             ship.thrusting = thrust;
             ship.heading = advance_heading(ship.heading, turn, ctx.delta_time);
             let direction = heading_direction(ship.heading);
@@ -136,6 +138,9 @@ impl AsteroidsGame {
             let (vel, _) = self.physics.get_body_velocity(entity).unwrap_or((Vec2::ZERO, 0.0));
             let new_vel = integrate_ship(vel, direction, thrust, ctx.delta_time);
             self.physics.set_velocity(entity, new_vel, 0.0);
+            if thrust_started {
+                self.music.play(ctx, Moment::Thrust(entity));
+            }
 
             self.update_firing(ctx, index, fire);
         }
@@ -194,6 +199,7 @@ impl AsteroidsGame {
         let direction = heading_direction(ship.heading);
         self.spawn_bullet(ctx.world, index, pos + direction * MUZZLE_OFFSET, direction * BULLET_SPEED);
         self.ships[index].fire_cooldown = FIRE_COOLDOWN;
+        self.music.play(ctx, Moment::Shot(entity));
     }
 
     /// Ship-vs-meatieroid is a game-side circle test, not a collision event: a
@@ -247,6 +253,7 @@ impl AsteroidsGame {
         ctx.particles.spawn_burst(pos, &effects::ship_death_burst(art.burst_color, &theme, self.tex_id));
         let (strength, radius) = GRID_IMPULSE_SHIP_DEATH;
         ripple_grid(ctx.world, pos, strength, radius);
+        self.music.play(ctx, Moment::Crash);
 
         self.ships[index].lives = self.ships[index].lives.saturating_sub(1);
         self.ships[index].shot_streak = 0;

@@ -1,0 +1,143 @@
+(
+    version: 1,
+    soundfont: "soundfonts/meatieroids.sf2",
+    looping: true,
+    parts: [
+        (
+            name: "theme",
+            track: Name("theme"),
+            mode: Loop,
+            quantize: Off,
+        ),
+        (
+            name: "drum",
+            track: Name("drum"),
+            mode: AtSongPosition,
+            quantize: Off,
+        ),
+        (
+            name: "surge",
+            track: Name("surge"),
+            mode: Loop,
+            quantize: Off,
+        ),
+        (
+            name: "crash",
+            track: Name("crash"),
+            mode: Loop,
+            quantize: Off,
+        ),
+        (
+            name: "fanfare",
+            track: Name("fanfare"),
+            mode: Loop,
+            quantize: Off,
+        ),
+        (
+            name: "life",
+            track: Name("life"),
+            mode: Loop,
+            quantize: Off,
+        ),
+        (
+            name: "jam",
+            track: Name("jam"),
+            mode: Loop,
+            quantize: Off,
+        ),
+    ],
+    instruments: [
+        (
+            name: "timpani",
+            source: SoundFont(
+                path: "soundfonts/meatieroids.sf2",
+                bank: 0,
+                preset: 47,
+            ),
+        ),
+        (
+            name: "tuba",
+            source: SoundFont(
+                path: "soundfonts/meatieroids.sf2",
+                bank: 0,
+                preset: 58,
+            ),
+        ),
+        (
+            name: "trombone",
+            source: SoundFont(
+                path: "soundfonts/meatieroids.sf2",
+                bank: 0,
+                preset: 57,
+            ),
+        ),
+        (
+            name: "trumpet",
+            source: SoundFont(
+                path: "soundfonts/meatieroids.sf2",
+                bank: 0,
+                preset: 56,
+            ),
+        ),
+        (
+            name: "hit",
+            source: SoundFont(
+                path: "soundfonts/meatieroids.sf2",
+                bank: 0,
+                preset: 55,
+            ),
+        ),
+    ],
+    bindings: [
+        (
+            action: "large",
+            part: "theme",
+            instrument: "tuba",
+        ),
+        (
+            action: "medium",
+            part: "theme",
+            instrument: "trombone",
+        ),
+        (
+            action: "small",
+            part: "theme",
+            instrument: "trumpet",
+        ),
+        (
+            action: "shot",
+            part: "drum",
+            instrument: "timpani",
+        ),
+        (
+            action: "thrust",
+            part: "surge",
+            instrument: "tuba",
+        ),
+        (
+            action: "crash",
+            part: "crash",
+            instrument: "hit",
+        ),
+        (
+            action: "wave",
+            part: "fanfare",
+            instrument: "trumpet",
+        ),
+        (
+            action: "life",
+            part: "life",
+            instrument: "trumpet",
+        ),
+        (
+            action: "menu",
+            part: "jam",
+            instrument: "trumpet",
+        ),
+    ],
+    provenance: Some((
+        author: "Gustav Holst, 1914–16; sequenced by the Opus executor for Be Insiculous, 2026",
+        license: "CC0-1.0",
+    )),
+    midi_fingerprint: Some(14417325342809159925),
+)

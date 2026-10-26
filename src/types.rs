@@ -222,6 +222,9 @@ pub struct AsteroidsGame {
 
     /// F1 toggles magenta collider outlines over the art.
     pub(crate) debug_colliders: bool,
+
+    /// Mars: the song, its moments' counts and the grid's pulse.
+    pub(crate) music: crate::music::Music,
 }
 
 impl Default for AsteroidsGame {
@@ -248,6 +251,7 @@ impl Default for AsteroidsGame {
             frame_count: 0,
             pause: PauseMenu::new(),
             debug_colliders: false,
+            music: crate::music::Music::default(),
         }
     }
 }

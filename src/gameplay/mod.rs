@@ -59,9 +59,13 @@ impl AsteroidsGame {
                 PauseAction::ExitGame => { ctx.request_exit(); return; }
                 // Skip the rest of the frame so the resuming keypress can't
                 // leak into gameplay; the world unfreezes next frame.
-                PauseAction::Resumed => return,
+                PauseAction::Resumed => {
+                    self.music.follow_pause(ctx, false);
+                    return;
+                }
                 PauseAction::Idle => {}
             }
+            self.music.follow_pause(ctx, self.pause.is_active());
             if self.pause.is_active() {
                 self.emit_collider_overlay(ctx);
                 return;
@@ -92,6 +96,13 @@ impl AsteroidsGame {
         self.wrap_entities(ctx);
         self.pose_ships(ctx.world);
         self.emit_collider_overlay(ctx);
+        // The beat's ripple lands under each ship where this frame draws it: after the wrap,
+        // never at the far edge it just left. A last life lost this frame left `GameOver`,
+        // and the frame pulses nothing.
+        if self.state == GameState::Playing {
+            let ships = live_ship_positions(&self.ships, ctx.world);
+            self.music.pulse(ctx, &ships);
+        }
     }
 
     /// Outline every collider in bright magenta while F1 is on — the only line-buffer

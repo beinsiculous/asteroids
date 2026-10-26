@@ -6,11 +6,13 @@
 //! harness: the real frame, with no window.
 
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use engine_core::assets::sprite_sheet::{prepare_sheet, PreparedSheet};
 use engine_core::prelude::*;
-use engine_core::test_support::{GameHarness, InputEvent};
+use engine_core::test_support::{DrawCommand, GameHarness, InputEvent};
 
+use crate::constants::BULLET_SPEED;
 use crate::types::*;
 
 pub(crate) const FRAME: f32 = 1.0 / 60.0;
@@ -80,4 +82,105 @@ pub(crate) fn press(key: KeyCode) -> InputEvent {
 
 pub(crate) fn release(key: KeyCode) -> InputEvent {
     InputEvent::KeyReleased(key)
+}
+
+/// Step one frame with `events` arriving before it.
+pub(crate) fn step_with(harness: &mut GameHarness<AsteroidsGame>, events: &[InputEvent]) {
+    harness.step(FRAME, events);
+}
+
+/// Frames with wall time between them, so the song's virtual clock renders blocks and the
+/// conductor drains what the frames sent.
+pub(crate) fn settle(harness: &mut GameHarness<AsteroidsGame>) {
+    for _ in 0..6 {
+        std::thread::sleep(Duration::from_millis(3));
+        harness.step(FRAME, &[]);
+    }
+}
+
+/// Step with wall time between frames until `done` holds, failing past `limit`.
+pub(crate) fn poll(
+    harness: &mut GameHarness<AsteroidsGame>,
+    limit: Duration,
+    what: &str,
+    done: impl Fn(&GameHarness<AsteroidsGame>) -> bool,
+) {
+    let started = Instant::now();
+    while !done(harness) {
+        assert!(started.elapsed() < limit, "{what} within {limit:?}");
+        std::thread::sleep(Duration::from_millis(3));
+        harness.step(FRAME, &[]);
+    }
+}
+
+/// Where the pause menu drew `label` in the last frame.
+pub(crate) fn drawn_at(harness: &GameHarness<AsteroidsGame>, label: &str) -> Vec2 {
+    harness.ui_commands().iter().find_map(|command| match command {
+        DrawCommand::Text { data, .. } if data.text.contains(label) => {
+            Some(data.position + Vec2::new(4.0, data.height / 2.0))
+        }
+        _ => None,
+    }).unwrap_or_else(|| panic!("'{label}' was drawn"))
+}
+
+pub(crate) fn key(harness: &mut GameHarness<AsteroidsGame>, code: KeyCode) {
+    harness.step(FRAME, &[press(code)]);
+    harness.step(FRAME, &[release(code)]);
+}
+
+pub(crate) fn source_of(harness: &GameHarness<AsteroidsGame>, entity: EntityId) -> Option<SourceId> {
+    harness.sound_sources().source_of(entity)
+}
+
+pub(crate) fn ship(harness: &GameHarness<AsteroidsGame>, index: usize) -> EntityId {
+    harness.game().ships[index].entity.expect("the ship is alive")
+}
+
+/// The match stops running while the song plays on: no ship, no break, no wave, so a test
+/// that waits on wall time hears only what it sent.
+pub(crate) fn hold_the_match(harness: &mut GameHarness<AsteroidsGame>) {
+    harness.context(|game, _| game.state = GameState::GameOver);
+}
+
+/// A match whose field holds one still meatieroid far in a corner, so no wave clears and
+/// spawns under a test, with what the match start sent drained.
+pub(crate) fn anchored(mode: GameMode, chaos: ChaosMode) -> (GameHarness<AsteroidsGame>, EntityId) {
+    let mut harness = empty_field(mode, chaos);
+    let anchor = place_meatieroid(&mut harness, AsteroidSize::Small, Vec2::new(-340.0, 250.0));
+    settle(&mut harness);
+    (harness, anchor)
+}
+
+/// Destroy every meatieroid but `keep`: a break's children leave the field.
+pub(crate) fn clear_but(harness: &mut GameHarness<AsteroidsGame>, keep: EntityId) {
+    harness.context(|game, ctx| {
+        let (kept, gone): (Vec<Asteroid>, Vec<Asteroid>) = game.asteroids.drain(..).partition(|rock| rock.entity == keep);
+        game.asteroids = kept;
+        for rock in gone {
+            game.physics.destroy_entity(ctx.world, rock.entity);
+        }
+    });
+}
+
+/// A shot of ship `index` flying up into `rock` from 30 px under its body's edge, so two
+/// shots fired together reach meatieroids of any sizes on the same frame.
+pub(crate) fn shoot_at(harness: &mut GameHarness<AsteroidsGame>, index: usize, rock: EntityId) {
+    let target = position_of(harness, rock);
+    harness.context(|game, ctx| {
+        let size = game.asteroids.iter().find(|candidate| candidate.entity == rock).expect("a live meatieroid").size;
+        let below = Vec2::new(0.0, size.radius() + 30.0);
+        game.spawn_bullet(ctx.world, index, target - below, Vec2::new(0.0, BULLET_SPEED));
+    });
+}
+
+/// Step until a frame's trace holds a trigger, and return it.
+pub(crate) fn next_trace(harness: &mut GameHarness<AsteroidsGame>) -> Vec<&'static str> {
+    for _ in 0..60 {
+        harness.step(FRAME, &[]);
+        let trace = harness.game().music.triggered.clone();
+        if !trace.is_empty() {
+            return trace;
+        }
+    }
+    panic!("no trigger in a second of frames");
 }

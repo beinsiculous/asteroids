@@ -21,6 +21,9 @@ mod gameplay_tests;
 #[cfg(test)]
 mod harness_tests;
 mod menu;
+mod music;
+#[cfg(test)]
+mod music_tests;
 mod spawning;
 #[cfg(test)]
 mod test_support;
@@ -110,10 +113,13 @@ impl Game for AsteroidsGame {
         // picks, and dead ships are despawned mid-match.
         self.space = Some(spawn_space(ctx.world, &self.sheets.space));
         self.backdrop = Some(spawn_backdrop(ctx.world, &ChaosTheme::for_mode(self.chaos_mode)));
+        self.music.game.start(ctx);
+        log::info!("meatieroids: init complete");
     }
 
     fn update(&mut self, ctx: &mut GameContext) {
         self.frame_count = self.frame_count.wrapping_add(1);
+        self.music.update(ctx);
 
         match self.state.clone() {
             GameState::TitleScreen { selection } => self.update_title_input(ctx, selection),

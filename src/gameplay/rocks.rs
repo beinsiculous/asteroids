@@ -10,6 +10,7 @@ use crate::achievements;
 use crate::art::*;
 use crate::constants::*;
 use crate::effects;
+use crate::music::Moment;
 use crate::spawning::{child_machine, spawn_effect, Effect};
 use crate::types::*;
 
@@ -226,6 +227,7 @@ impl AsteroidsGame {
             .unwrap_or((Vec2::ZERO, 0.0));
         let (vel, _) = self.physics.get_body_velocity(entity).unwrap_or((Vec2::ZERO, 0.0));
         self.physics.destroy_entity(ctx.world, entity);
+        self.music.play(ctx, Moment::Break(rock.size));
 
         let art = rock.size.art();
         let die = spawn_effect(ctx.world, &Effect {
@@ -244,7 +246,10 @@ impl AsteroidsGame {
         let (strength, radius) = GRID_IMPULSE_BREAK[rock.size.idx()];
         ripple_grid(ctx.world, pos, strength, radius);
 
-        self.award_points(ctx.achievements, ship_index, rock.size.score());
+        let lives_earned = self.award_points(ctx.achievements, ship_index, rock.size.score());
+        for _ in 0..lives_earned {
+            self.music.play(ctx, Moment::Life);
+        }
         self.ships[ship_index].shot_streak += 1;
         if self.ships[ship_index].shot_streak >= SHARPSHOOTER_TARGET {
             ctx.achievements.unlock(achievements::SHARPSHOOTER);
@@ -326,6 +331,7 @@ impl AsteroidsGame {
                 }
             }
             self.spawn_wave(ctx.world);
+            self.music.play(ctx, Moment::Wave);
         }
     }
 }

@@ -41,6 +41,7 @@ impl AsteroidsGame {
         self.apply_theme(ctx.world);
         self.spawn_wave(ctx.world);
         self.state = GameState::Playing;
+        self.music.game.restart(ctx);
     }
 
     /// Build a fresh set of ships for the current mode, despawning any that
@@ -125,13 +126,14 @@ impl AsteroidsGame {
     /// ship a bonus life at every `EXTRA_LIFE_EVERY` crossing (each threshold
     /// pays out exactly once, per ship). A ship already out of lives still scores
     /// the shots it left in flight but never earns a life back: one it has no body
-    /// to fly would keep `coop_over` from ever ending the match.
+    /// to fly would keep `coop_over` from ever ending the match. Returns the lives earned,
+    /// which the caller sounds one `life` each.
     pub(crate) fn award_points(
         &mut self,
         achievements: &mut AchievementManager,
         ship_index: usize,
         points: u32,
-    ) {
+    ) -> u32 {
         let ship = &mut self.ships[ship_index];
         ship.score += points;
         if ship.score >= SCORE_TIER_1 {
@@ -140,10 +142,13 @@ impl AsteroidsGame {
         if ship.score >= SCORE_TIER_2 {
             achievements.unlock(crate::achievements::SCORE_30K);
         }
+        let mut lives_earned = 0;
         while ship.lives > 0 && ship.score >= ship.next_extra_life_at {
             ship.lives += 1;
             ship.next_extra_life_at += EXTRA_LIFE_EVERY;
+            lives_earned += 1;
         }
+        lives_earned
     }
 
     /// Push the current `chaos_mode`'s look onto the grid. The mode pick happens after
