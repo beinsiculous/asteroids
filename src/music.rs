@@ -1,7 +1,7 @@
-//! Meatieroids' music: Gustav Holst's *Mars, the Bringer of War*, which the engine's conductor
+//! Meatieroids' music: the original *Meteor Sizzle*, which the engine's conductor
 //! plays as a song.
 //!
-//! The background — the timpani's ostinato in 5/4 over the tuba's G pedal, the trumpet's calls
+//! The background — a five-beat space-rock riff over driving bass, drums and lead answers
 //! — plays by itself from `init` on, through the menus and under the pause menu. Seven moments
 //! trigger the song's bindings, each on the source [`Music::play`] names for it; a move in the
 //! pause menu jams the `jam` counter-line; the grid ripples under each live ship on the song's

@@ -223,7 +223,7 @@ pub struct AsteroidsGame {
     /// F1 toggles magenta collider outlines over the art.
     pub(crate) debug_colliders: bool,
 
-    /// Mars: the song, its moments' counts and the grid's pulse.
+    /// Meteor Sizzle: the song, its moments' counts and the grid's pulse.
     pub(crate) music: crate::music::Music,
 }
 

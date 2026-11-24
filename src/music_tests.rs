@@ -58,7 +58,7 @@ fn the_committed_sidecar_binds_nine_moments_on_seven_unquantized_parts() {
     }
     assert!(file.parts.iter().all(|part| part.quantize == Quantize::Off), "no trigger is parked on the loop seam");
     assert!(file.provenance.is_some());
-    assert_eq!(file.soundfont, "soundfonts/meatieroids.sf2");
+    assert_eq!(file.soundfont, "soundfonts/ai_meatieroids.sf2");
     let song = committed_song();
     for cue in ["surge", "crash", "fanfare", "life"] {
         assert_eq!(units_of(&song, cue).len(), 1, "a cue is one note or one chord: Loop plays one unit a trigger ({cue})");
@@ -97,12 +97,12 @@ fn every_key_of_the_shared_theme_sounds_on_each_of_its_three_instruments() {
 }
 
 #[test]
-fn the_song_is_thirty_two_bars_of_five_four_at_160_and_its_drum_and_ostinato_keep_the_bars() {
+fn the_song_is_thirty_two_bars_of_five_four_at_160_and_its_drum_tiles_the_loop() {
     let song = committed_song();
     let meter = song.time_signatures().first().expect("a meter is written, not the 4/4 default");
-    assert_eq!((meter.tick, meter.numerator, meter.denominator), (0, 5, 4), "else the pulse's bars drift off Mars");
+    assert_eq!((meter.tick, meter.numerator, meter.denominator), (0, 5, 4), "else the pulse's bars drift off the riff");
     let loop_end = BackgroundScore::new(&song, &Default::default()).end_tick();
-    assert_eq!(loop_end, 32 * BAR_TICKS, "the tuba's held pedal ends it on a downbeat");
+    assert_eq!(loop_end, 32 * BAR_TICKS, "the bass's final note ends it on a downbeat");
     let tempo = song.tempo_map();
     assert_eq!(tempo.microseconds_per_quarter_at(0), 375_000, "160 BPM from the first tick");
     assert!((tempo.seconds_at_tick(loop_end) - 60.0).abs() < 1e-9, "the loop is sixty seconds");
@@ -115,11 +115,9 @@ fn the_song_is_thirty_two_bars_of_five_four_at_160_and_its_drum_and_ostinato_kee
     }
     assert_eq!(end_of(drum.last().expect("a unit")), loop_end, "the last ends on the loop's end, so no shot lands in a rest");
 
-    let ostinato = units_of(&song, "ostinato");
-    for bar in 0..32 {
-        let starts: Vec<u64> = ostinato.iter().map(|unit| unit.tick).filter(|tick| tick / BAR_TICKS == bar).map(|tick| tick % BAR_TICKS).collect();
-        assert_eq!(starts, [0, 160, 320, 480, 960, 1440, 1680, 1920], "bar {}: a triplet, two quarters, two eighths, a quarter", bar + 1);
-    }
+    let bass = units_of(&song, "EngineRoom");
+    assert!(bass.iter().any(|unit| end_of(unit) == loop_end), "an actual backing note ends the loop");
+
 }
 
 #[test]
@@ -400,7 +398,7 @@ fn the_song_plays_after_init_and_a_match_start_requests_it_into_an_empty_slot_or
     hold_the_match(&mut harness);
     settle(&mut harness);
     let position = harness.audio().song_position().expect("playing");
-    assert_eq!((position.bar, position.beat), (0, 0), "a match begins at the top of Mars");
+    assert_eq!((position.bar, position.beat), (0, 0), "a match begins at the top of Meteor Sizzle");
 }
 
 /// An asset folder holding every directory the game reads but `soundfonts/`, each a link to
@@ -448,4 +446,81 @@ fn without_its_bank_the_game_runs_silent_and_counts_every_trigger_it_refuses() {
     assert_eq!(harness.game().music.triggered, ["shot"]);
     assert_eq!(harness.sound_sources().refused_triggers(), refused + 1, "refused, and counted");
     assert_eq!(harness.game().state, GameState::Playing, "and the game runs on");
+}
+
+
+#[test]
+fn meteor_sizzle_has_compatible_harmony_exact_loop_end_and_action_signal() {
+    let assets = asset_base();
+    let file = music_midi::parse_song_file("Meteor Sizzle", &std::fs::read_to_string(assets.join(format!("{SONG_PATH}.ron"))).unwrap()).unwrap();
+    let bank = std::fs::read(assets.join(&file.soundfont)).unwrap();
+    let song = std::sync::Arc::new(music_midi::Song::new(file.clone(), committed_song(), &[(&file.soundfont, &bank)], &[]).unwrap());
+    assert_eq!(song.background().end_tick(), 76800);
+    assert_eq!(song.data().ticks_per_quarter(), 480);
+    assert!((song.data().tempo_map().seconds_at_tick(76800) - 60.0).abs() < 0.000001);
+    let bass = song.data().tracks().iter().find(|track| track.name() == Some("EngineRoom")).unwrap();
+    assert!(bass.units().iter().any(|unit| unit.notes.iter().any(|note| unit.tick + note.duration_ticks == 76800)));
+    assert!(bank.len() <= 4 * 1024 * 1024);
+    assert_eq!(file.instruments.len(), 5);
+    let actions: std::collections::BTreeSet<_> = file.bindings.iter().map(|binding| binding.action.as_str()).collect();
+    assert_eq!(actions, ["large", "medium", "small", "shot", "thrust", "crash", "wave", "life", "menu"].into_iter().collect());
+    let programs: std::collections::BTreeSet<_> = file.instruments.iter().map(|instrument| {
+        match instrument.source {
+            music_midi::InstrumentSource::SoundFont { preset, .. } => preset,
+            _ => panic!("original bank only"),
+        }
+    }).collect();
+    assert_eq!(programs, [47, 58, 57, 56, 55].into_iter().collect());
+    let mut backing = std::collections::BTreeSet::new();
+    let mut cues = std::collections::BTreeSet::new();
+    for track in song.data().tracks() {
+        let cue = matches!(track.name(), Some("theme" | "drum" | "surge" | "crash" | "fanfare" | "life" | "jam"));
+        for unit in track.units() {
+            for note in &unit.notes {
+                assert!(unit.tick + note.duration_ticks <= 76800);
+                if track.channel() != Some(9) {
+                    if cue { cues.insert(note.key % 12); } else { backing.insert(note.key % 12); }
+                }
+            }
+        }
+    }
+    assert_eq!(backing, [1, 4, 6, 9].into_iter().collect());
+    assert_eq!(cues, backing);
+    for cue in cues { for background in &backing {
+        assert!(![1, 6, 11].contains(&((cue + 12 - background) % 12)));
+    } }
+    assert!(song.background_peak().voices <= 8);
+    // Every retained legacy slot must load without fallback.
+    let (mut conductor, handle) = music_midi::Conductor::new(music_midi::ConductorConfig::new(44100)).unwrap();
+    assert!(conductor.load(song.clone()).unwrap().warnings.is_empty());
+    handle.send(music_midi::ConductorCommand::Play).unwrap();
+    let start = std::time::Instant::now();
+    for (index, action) in ["large", "medium", "small", "shot", "thrust", "crash", "wave", "life", "menu"].into_iter().enumerate() {
+        let stamp = start + Duration::from_millis(index as u64 * 10);
+        handle.send(music_midi::ConductorCommand::Trigger {
+            binding: song.binding_index(action).unwrap(),
+            source: music_midi::SourceId { id: index as u64, generation: 0, epoch: 1 }, stamp,
+        }).unwrap();
+        conductor.render_at(stamp, &mut [0.0; 64], &mut [0.0; 64], music_midi::BusGains { music: 1.0, sfx: 1.0 });
+    }
+    assert_eq!(handle.position().snapshot().accepted_triggers, 9);
+    assert_eq!(handle.position().snapshot().silent_triggers, 0);
+    // Selectable samples must contain signal, independently of the backing or
+    // another cue's release tail. A fresh conductor isolates each binding.
+    for action in ["large", "medium", "small", "shot", "thrust", "crash", "wave", "life", "menu"] {
+        let (mut isolated, commands) = music_midi::Conductor::new(music_midi::ConductorConfig::new(44100)).unwrap();
+        isolated.load(song.clone()).unwrap();
+        commands.send(music_midi::ConductorCommand::Play).unwrap();
+        let stamp = std::time::Instant::now();
+        commands.send(music_midi::ConductorCommand::Trigger {
+            binding: song.binding_index(action).unwrap(),
+            source: music_midi::SourceId { id: 1, generation: 0, epoch: 1 }, stamp,
+        }).unwrap();
+        let mut left = [0.0; 4096];
+        let mut right = [0.0; 4096];
+        isolated.render_at(stamp, &mut left, &mut right, music_midi::BusGains { music: 0.0, sfx: 1.0 });
+        assert!(left.iter().chain(&right).all(|sample| sample.is_finite() && sample.abs() < 1.0));
+        let energy: f32 = left.iter().chain(&right).map(|sample| sample * sample).sum();
+        assert!(energy > 0.0001, "{action} has nonzero PCM, not only a selectable zone");
+    }
 }

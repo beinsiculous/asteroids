@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 cargo run                     # play the game
 cargo run --features editor   # run the game inside the engine's scene editor
 cargo build                   # compile check
-cargo test                    # run the 82 headless tests (39 in src/gameplay_tests.rs, 15 in music_tests.rs, 10 in art_tests.rs, 7 in harness_tests.rs, 4 in spawning.rs, 4 in achievements.rs, 2 in title_screen_tests.rs, 1 in constants.rs)
+cargo test                    # run the 83 headless tests (39 in src/gameplay_tests.rs, 16 in music_tests.rs, 10 in art_tests.rs, 7 in harness_tests.rs, 4 in spawning.rs, 4 in achievements.rs, 2 in title_screen_tests.rs, 1 in constants.rs)
 cargo test <test_name>        # run a single test
 ```
 
@@ -52,7 +52,7 @@ This is a single-crate game (`insiculous_asteroids`, shown to players as **Meati
 
 **Paths:** `engine_core::game_root!()` anchors everything, so `cargo run` works from any cwd. Assets in `assets/` (`fonts/font.ttf`, the synced `sprites/`, the song under `ai/music/` and its bank under `soundfonts/`); achievements persist to `saves/asteroids_achievements.json`, input bindings to `saves/input_settings.json`.
 
-**Tests** are fully headless: `src/gameplay_tests.rs` (39 — pure rules plus rapier sim tests using the exact spawn recipes), `src/music_tests.rs` (15 — the song through the harness's virtual clock, § Music below), `src/art_tests.rs` (10 — every measured number and clip against the synced sheets), `src/harness_tests.rs` (7 — the whole game through the engine's `GameHarness`, fixtures in `test_support.rs`), `src/title_screen_tests.rs` (2) + inline mods in `spawning.rs` (4), `achievements.rs` (4) and `constants.rs` (1). Pure functions (`integrate_ship`, `ship_pose`, `displayed_heading`, `wrap_position`, `split_spec`, `split_offset`, `split_velocity`, `resolve_hit_pairs`, `spawn_position`, `coop_over`, …) exist precisely so behavior can be pinned without a window — keep new rules in that shape.
+**Tests** are fully headless: `src/gameplay_tests.rs` (39 — pure rules plus rapier sim tests using the exact spawn recipes), `src/music_tests.rs` (16 — the song through the harness's virtual clock, § Music below), `src/art_tests.rs` (10 — every measured number and clip against the synced sheets), `src/harness_tests.rs` (7 — the whole game through the engine's `GameHarness`, fixtures in `test_support.rs`), `src/title_screen_tests.rs` (2) + inline mods in `spawning.rs` (4), `achievements.rs` (4) and `constants.rs` (1). Pure functions (`integrate_ship`, `ship_pose`, `displayed_heading`, `wrap_position`, `split_spec`, `split_offset`, `split_velocity`, `resolve_hit_pairs`, `spawn_position`, `coop_over`, …) exist precisely so behavior can be pinned without a window — keep new rules in that shape.
 
 ## The Deion Re-skin (Phase G): Meatieroids
 
@@ -61,31 +61,23 @@ Shipped: the asteroids are **roided-out flexing meatballs** in the same three si
 - Style SSOT: `deion_assets/DEION_STYLE.md` via the `deion_assets -> ../../deion_assets` symlink (the working set's layout — the Cargo path dep `../../insiculous_2d` already requires it). The game ships at 1×, pixel-snapped; never fake a footprint via `Transform2D.scale` (physics ignores it).
 - Runtime assets arrive ONLY via the deion_assets sync copy into `assets/sprites/` (`python3 deion_assets/scripts/sync_sprites.py .`, pinned in `sync.list`) — never symlink or hand-copy art in. AI art is quarantined (`ai_` prefix) — tiered ship rule (DEION_STYLE.md §6): may ship in FREE web builds, never in paid/marketplace builds; `deion_assets/scripts/check_no_ai_assets.sh` must pass on any paid release's asset tree. Sheet clip names are the stable API between art and code.
 
-## Music (Mars, 2026-10)
+## Music (Meteor Sizzle)
 
-Meatieroids plays Gustav Holst's *Mars, the Bringer of War* through the engine's conductor
-(`training.md` § Conductor Pattern in the engine). The game's part is `src/music.rs` — its
-constants, its moments, its counts and its pulse — standing on the engine's `GameMusic`
-(`engine_core::game_music`), which carries the request, the match start's identity rule, the
-jam's latch, the beat and the telemetry. Its tests are `src/music_tests.rs`.
+Meatieroids plays original AI-authored F-sharp-minor five-beat space-rock through
+`GameMusic` and the engine conductor. The editable project, original patches,
+recipes and full build/install/audition commands live in `music-source/README.md`.
+The game's moments, counts, source lifecycle and grid pulse remain unchanged.
 
-- **The song** is `assets/ai/music/ai_meatieroids.mid` and its sidecar: thirty-two bars of 5/4 on G
-  at 160 BPM, 60 s (Mars is a long crescendo and a match is long), looping on the ostinato's
-  downbeat. An agent sequenced it from memory through the editor's command API while the editor
-  still composed (`song new`, `song edit …`, `song save ai/music/ai_meatieroids.mid`); those score
-  verbs are gone, the score is MIDI Evil's now and the engine's `song` verbs map it. It sits under
-  `ai/music` with the `ai_` prefix until a person's pass promotes it; the Conductor panel's Save
-  wrote the sidecar and the stanza in `assets/ai/music/LICENSE`. Never hand-edit the sidecar — open
-  the song in the Conductor panel (`cargo run --features editor`, File → Open Song...) and save it
-  again. The meter is written, not assumed: a song without one is 4/4, and the pulse's bars would
-  drift a beat a bar. The loop ends where its last written note ends, so the tuba's last pedal note
-  is held to the bar line.
-- **The background** — the timpani's ostinato on G every bar (a triplet, two quarters, two eighths,
-  a quarter; track `ostinato`), the tuba's G pedal (`pedal`) and the trumpet's sparse calls
-  (`calls`) — plays by itself from `init` on, through the menus, under the pause menu and under the
-  game-over panel. `song new`, a score verb since gone, made a track `melody` on channel 1 with
-  program 0, and no edit changed its program; the bank has no preset 0, so a note there would sound
-  on its lowest preset. That track stays empty.
+- **The song** is `assets/ai/music/ai_meatieroids.mid` and its native-save sidecar:
+  32 bars of explicit5/4,160BPM480PPQ, exactly60seconds. The final EngineRoom bass
+  note ends at76800ticks; no cue extends it. Original riff, lead answers, distorted
+  bass and drums vary through A/B/break/reprise with fills. All pitched material
+  uses F#/A/C#/E to support arbitrary asynchronous cues.
+- **AI quarantine stays**: `ai/music` and `ai_` prefixes remain until human approval.
+  The native SongDocument remapper saves the sidecar/fingerprint/provenance and
+  validates every declared preset/key; never hand-edit that map.
+- **The background** starts at init and continues through menus, pause and game
+  over. Its EngineRoom/OrbitRiff/CometAnswer/Kick/Snare/Hat names select no cue part.
 - **Nine bindings, two source kinds**, every part `quantize: Off` (a quantized trigger in the
   loop's last beat would be parked on the seam and dropped):
 
@@ -95,17 +87,17 @@ jam's latch, the beat and the telemetry. Its tests are `src/music_tests.rs`.
   | `large` | a large meatieroid broken (`shatter_asteroid`, right after the destroy) | `theme` (Loop) | tuba | the game's — the meatieroid is gone in that call and its note rings on |
   | `medium` | a medium meatieroid broken | `theme` (Loop) | trombone | the game's |
   | `small` | a small meatieroid broken | `theme` (Loop) | trumpet | the game's |
-  | `thrust` | a ship's thrust starting (`update_ship_control`, the rising edge) | `surge` (Loop, one low held note) | tuba | the ship's own |
+  | `thrust` | a ship's thrust starting (`update_ship_control`, the rising edge) | `surge` (Loop, one short low note) | tuba | the ship's own |
   | `crash` | a ship lost (`kill_ship`) | `crash` (Loop, one chord) | orchestra hit | the game's |
   | `wave` | the next wave arriving (`check_wave_clear`'s spawn edge) | `fanfare` (Loop, one chord) | trumpet | the game's |
   | `life` | an extra ship (`award_points`'s count, sounded by the break that earned it) | `life` (Loop, one short high note) | trumpet | the game's |
-  | `menu` | a move in the pause menu | `jam` (Loop, the calls as a counter-line) | trumpet | the menu's |
+  | `menu` | a move in the pause menu | `jam` (Loop, the counter-line) | trumpet | the menu's |
 
-  The three sizes walk **one** brass theme, written in the octave the tuba, the trombone and the
-  trumpet all carry (G3 to D4), so a wave is walked through Mars's first subject in the order its
-  meatieroids break, the big ones low. A cue is one note or one chord: `Loop` plays one unit (the
-  notes starting on one tick) a trigger. A shot drums the beat written for that moment, always on
-  the ostinato; the drum line has no rest from tick 0 to the loop's end, which a test holds.
+  The three sizes walk **one** original theme with a shared cursor. The legacy
+  tuba/trombone/trumpet identifiers now carry low saw thuds, middle filtered square
+  impacts and bright octave triangles. Large sounds lower/heavier; small brighter.
+  `Loop` plays one unit (notes at one tick) per trigger. Positional shots use dry,
+  restrained120tick units tiling the full loop; there is no rest where a shot vanishes.
   Holding thrust sends nothing more, and releasing sends nothing. **No hyperspace binding**: the
   game has no hyperspace (the cake saucer, `asteroids#2`, is the next move). No binding for a
   wave's clear edge (the two-second breath is the signal; the fanfare lands with the rocks), a
@@ -140,16 +132,17 @@ jam's latch, the beat and the telemetry. Its tests are `src/music_tests.rs`.
   `jam_units`, `pulsed` and `refused`, at `info` when asked — `?telemetry=1` on the web page,
   `MEATIEROIDS_TELEMETRY=1` natively. `init` ends with `meatieroids: init complete`, the line the
   boot measurement stops on.
-- **The bank** is `assets/soundfonts/meatieroids.sf2`, FluidR3 GM's timpani (0:47), tuba (0:58),
-  trombone (0:57), trumpet (0:56) and orchestra hit (0:55), 2.40 MiB, cut by
-  `scripts/prepare_soundfont.sh` — a wrapper over the engine's `scripts/prepare_game_soundfont.sh`
-  with `--bank <path>` for a FluidR3_GM.sf2 got any other way; the source's and the output's
-  sha256s are in the `LICENSE` beside it. No strings and no horns fit: any of them beside the
-  timpani is over the cap, so the brass theme is the tuba's, the trombone's and the trumpet's.
-  Budget: **the bank under 4 MiB** (the engine's script refuses to write one over it), the song
-  under 256 KiB. On the web every asset, the bank included, is fetched before the first frame.
-- The browser bundles moved to **v6** (game) and **v5** (editor) with the music
-  (`src/web_entry.rs` names the four places each version lives).
+- **The bank** is `assets/soundfonts/ai_meatieroids.sf2`: original CC0 MIDI Evil
+  synthesis, finite nonlooping exact-key zones, no third-party samples. Legacy slots
+  timpani47/tuba58/trombone57/trumpet56/hit55 remain loadable. Shots and thrust are
+  quiet and short; crash is a distinct low chord; wave/life are bright rewards.
+  `scripts/prepare_soundfont.sh` delegates through thin `music-source/build.py` to
+  the shared engine builder. Bank<4MiB,MIDI<256KiB,five triggered slots,one layer/key.
+  All assets preload on the web. Historical editor scores need their original
+  bank/LICENSE restored separately from3f200b2, not retargeted to new synthesis.
+- Local browser auditions retain **v6** (game) and **v5** (editor); no publication
+  or immutable deployed version overwrite. Publication requires new versions in
+  all four places named by each checklist in `src/web_entry.rs`.
 
 ## Work tracking
 

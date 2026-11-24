@@ -1,0 +1,22 @@
+{
+  "name": "dry_shot",
+  "sample_rate": 32000,
+  "seed": 11806,
+  "gain": 0.33,
+  "duration_seconds": 1.0,
+  "pitch_tracking": true,
+  "oscillators": [
+    {
+      "waveform": "triangle",
+      "start_frequency_hz": 440.0,
+      "end_frequency_hz": 440.0,
+      "amplitude": 1.0
+    }
+  ],
+  "envelope": {
+    "attack_seconds": 0.001,
+    "decay_seconds": 0.055,
+    "sustain_level": 0.0,
+    "release_seconds": 0.05
+  }
+}

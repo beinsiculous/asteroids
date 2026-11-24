@@ -1,0 +1,284 @@
+{
+  "seed": 11800,
+  "sample_rate": 32000,
+  "velocity": 127,
+  "gain": 0.8,
+  "backing_pitch_classes": [
+    1,
+    4,
+    6,
+    9
+  ],
+  "cue_pitch_classes": [
+    1,
+    4,
+    6,
+    9
+  ],
+  "renders": [
+    {
+      "instrument": 0,
+      "key": 30,
+      "ticks": 720,
+      "wav": "rendered/grit_bass_30.wav"
+    },
+    {
+      "instrument": 0,
+      "key": 33,
+      "ticks": 720,
+      "wav": "rendered/grit_bass_33.wav"
+    },
+    {
+      "instrument": 0,
+      "key": 37,
+      "ticks": 720,
+      "wav": "rendered/grit_bass_37.wav"
+    },
+    {
+      "instrument": 0,
+      "key": 40,
+      "ticks": 720,
+      "wav": "rendered/grit_bass_40.wav"
+    },
+    {
+      "instrument": 0,
+      "key": 42,
+      "ticks": 720,
+      "wav": "rendered/grit_bass_42.wav"
+    },
+    {
+      "instrument": 1,
+      "key": 64,
+      "ticks": 720,
+      "wav": "rendered/orbital_riff_64.wav"
+    },
+    {
+      "instrument": 1,
+      "key": 66,
+      "ticks": 720,
+      "wav": "rendered/orbital_riff_66.wav"
+    },
+    {
+      "instrument": 1,
+      "key": 69,
+      "ticks": 720,
+      "wav": "rendered/orbital_riff_69.wav"
+    },
+    {
+      "instrument": 1,
+      "key": 73,
+      "ticks": 720,
+      "wav": "rendered/orbital_riff_73.wav"
+    },
+    {
+      "instrument": 1,
+      "key": 76,
+      "ticks": 720,
+      "wav": "rendered/orbital_riff_76.wav"
+    },
+    {
+      "instrument": 1,
+      "key": 78,
+      "ticks": 720,
+      "wav": "rendered/orbital_riff_78.wav"
+    },
+    {
+      "instrument": 1,
+      "key": 81,
+      "ticks": 720,
+      "wav": "rendered/orbital_riff_81.wav"
+    },
+    {
+      "instrument": 1,
+      "key": 85,
+      "ticks": 720,
+      "wav": "rendered/orbital_riff_85.wav"
+    },
+    {
+      "instrument": 1,
+      "key": 88,
+      "ticks": 720,
+      "wav": "rendered/orbital_riff_88.wav"
+    },
+    {
+      "instrument": 2,
+      "key": 78,
+      "ticks": 720,
+      "wav": "rendered/lead_answer_78.wav"
+    },
+    {
+      "instrument": 2,
+      "key": 81,
+      "ticks": 720,
+      "wav": "rendered/lead_answer_81.wav"
+    },
+    {
+      "instrument": 2,
+      "key": 85,
+      "ticks": 720,
+      "wav": "rendered/lead_answer_85.wav"
+    },
+    {
+      "instrument": 3,
+      "key": 36,
+      "ticks": 720,
+      "wav": "rendered/meteor_kick_36.wav"
+    },
+    {
+      "instrument": 4,
+      "key": 38,
+      "ticks": 720,
+      "wav": "rendered/meteor_snare_38.wav"
+    },
+    {
+      "instrument": 5,
+      "key": 42,
+      "ticks": 720,
+      "wav": "rendered/orbit_hat_42.wav"
+    },
+    {
+      "instrument": 6,
+      "key": 54,
+      "ticks": 720,
+      "wav": "rendered/dry_shot_54.wav"
+    },
+    {
+      "instrument": 6,
+      "key": 57,
+      "ticks": 720,
+      "wav": "rendered/dry_shot_57.wav"
+    },
+    {
+      "instrument": 6,
+      "key": 61,
+      "ticks": 720,
+      "wav": "rendered/dry_shot_61.wav"
+    },
+    {
+      "instrument": 6,
+      "key": 64,
+      "ticks": 720,
+      "wav": "rendered/dry_shot_64.wav"
+    },
+    {
+      "instrument": 7,
+      "key": 42,
+      "ticks": 720,
+      "wav": "rendered/heavy_rock_42.wav"
+    },
+    {
+      "instrument": 7,
+      "key": 66,
+      "ticks": 720,
+      "wav": "rendered/heavy_rock_66.wav"
+    },
+    {
+      "instrument": 7,
+      "key": 69,
+      "ticks": 720,
+      "wav": "rendered/heavy_rock_69.wav"
+    },
+    {
+      "instrument": 7,
+      "key": 73,
+      "ticks": 720,
+      "wav": "rendered/heavy_rock_73.wav"
+    },
+    {
+      "instrument": 7,
+      "key": 76,
+      "ticks": 720,
+      "wav": "rendered/heavy_rock_76.wav"
+    },
+    {
+      "instrument": 8,
+      "key": 66,
+      "ticks": 720,
+      "wav": "rendered/middle_rock_66.wav"
+    },
+    {
+      "instrument": 8,
+      "key": 69,
+      "ticks": 720,
+      "wav": "rendered/middle_rock_69.wav"
+    },
+    {
+      "instrument": 8,
+      "key": 73,
+      "ticks": 720,
+      "wav": "rendered/middle_rock_73.wav"
+    },
+    {
+      "instrument": 8,
+      "key": 76,
+      "ticks": 720,
+      "wav": "rendered/middle_rock_76.wav"
+    },
+    {
+      "instrument": 9,
+      "key": 64,
+      "ticks": 720,
+      "wav": "rendered/bright_rock_64.wav"
+    },
+    {
+      "instrument": 9,
+      "key": 66,
+      "ticks": 720,
+      "wav": "rendered/bright_rock_66.wav"
+    },
+    {
+      "instrument": 9,
+      "key": 69,
+      "ticks": 720,
+      "wav": "rendered/bright_rock_69.wav"
+    },
+    {
+      "instrument": 9,
+      "key": 73,
+      "ticks": 720,
+      "wav": "rendered/bright_rock_73.wav"
+    },
+    {
+      "instrument": 9,
+      "key": 76,
+      "ticks": 720,
+      "wav": "rendered/bright_rock_76.wav"
+    },
+    {
+      "instrument": 9,
+      "key": 78,
+      "ticks": 720,
+      "wav": "rendered/bright_rock_78.wav"
+    },
+    {
+      "instrument": 9,
+      "key": 81,
+      "ticks": 720,
+      "wav": "rendered/bright_rock_81.wav"
+    },
+    {
+      "instrument": 9,
+      "key": 85,
+      "ticks": 720,
+      "wav": "rendered/bright_rock_85.wav"
+    },
+    {
+      "instrument": 9,
+      "key": 90,
+      "ticks": 720,
+      "wav": "rendered/bright_rock_90.wav"
+    },
+    {
+      "instrument": 10,
+      "key": 42,
+      "ticks": 720,
+      "wav": "rendered/ship_crash_42.wav"
+    },
+    {
+      "instrument": 10,
+      "key": 49,
+      "ticks": 720,
+      "wav": "rendered/ship_crash_49.wav"
+    }
+  ]
+}
