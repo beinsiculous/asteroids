@@ -112,8 +112,9 @@ The closure test isolates each action in a fresh Conductor with music0/sfx1 and
 within~93ms, not proof of perceived audibility. Impact/reward versus shot/thrust
 levels are reviewable in the isolated metrics and recordings.
 
-Local bundle paths verified from src/web_entry.rs: game meatieroids v6 and editor
-asteroids v5. No deployment, synchronization or version changes in this batch.
+Website release paths from src/web_entry.rs: game meatieroids v7 and editor
+asteroids v6. Matching bundles and content are prepared in insiculous_web for
+its dev/main merges.
 
 ## Runtime SHA256
 

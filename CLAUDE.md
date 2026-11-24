@@ -140,9 +140,11 @@ The game's moments, counts, source lifecycle and grid pulse remain unchanged.
   the shared engine builder. Bank<4MiB,MIDI<256KiB,five triggered slots,one layer/key.
   All assets preload on the web. Historical editor scores need their original
   bank/LICENSE restored separately from3f200b2, not retargeted to new synthesis.
-- Local browser auditions retain **v6** (game) and **v5** (editor); no publication
-  or immutable deployed version overwrite. Publication requires new versions in
-  all four places named by each checklist in `src/web_entry.rs`.
+- Website release bundles use game `/games/meatieroids/v7/` and editor
+  `/playground/asteroids/v6/`. The matching site content and bundles
+  are prepared in `insiculous_web`; its dev/main merges deploy staging/production.
+  Preserve previous version directories. The four-place checklists in
+  `src/web_entry.rs` must agree for every later release.
 
 ## Work tracking
 
