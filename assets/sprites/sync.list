@@ -11,10 +11,10 @@
 # The quarantined `ai_` prefix stays on the copies: a paid build's
 # check_no_ai_assets.sh gate must still find them until Jesse's cleanup pass.
 #
-# deion_assets d9ecc155cab2be809b0b37a2c8aca16e85d52143
+# deion_assets de1390b67865d60137c2d43c9ecc09f417f84371
 ai/branding/be_insiculous/ai_be_insiculous_320x192.png
-ai/branding/insiculous_2d_maxwell/ai_insiculous_2d_maxwell_splash_320x192.png
-ai/branding/insiculous_2d_maxwell/ai_insiculous_2d_maxwell_icon_64x64.png
+ai/branding/insiculous_2d_cubert/ai_insiculous_2d_cubert_splash_320x192.png
+ai/branding/insiculous_2d_cubert/ai_insiculous_2d_cubert_icon_64x64.png
 ai/sidescroller/meatieroid_large/ai_meatieroid_large.png
 ai/sidescroller/meatieroid_medium/ai_meatieroid_medium.png
 ai/sidescroller/meatieroid_small/ai_meatieroid_small.png
